@@ -26,9 +26,11 @@ client.on(Events.MessageCreate, async msg => {
 	if (msg.author.bot) return;
 	if (msg.channelId !== MONITOR_CHANNEL_ID) return;
 	if (msg.content === '' && msg.attachments.size === 0) return;
+	console.log(`Received message from ${msg.author.tag}`);
 	const message = msg.content;
 	const attatchment = msg.attachments.first();
 	const image_url = attatchment ? attatchment.url : undefined;
+	console.log(`Forwarding message: ${message} with image: ${image_url}`);
 	await groupmeBot.postMessage(message, image_url);
 });
 

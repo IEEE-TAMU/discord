@@ -45,8 +45,10 @@ const GroupMeBot = {
 	})(),
 	postMessage: async function(message: string, imageUrl?: string) {
 		if (!imageUrl) {
+			console.log(`Posting message to GroupMe: ${message}`);
 			return postMessageAsBot(this.bot_id, message);
 		}
+		console.log(`Uploading image from ${imageUrl} to GroupMe`);
 		const image = await fetch(imageUrl).then(async response => {
 			return {
 				contentType: response.headers.get('Content-Type')!,
@@ -54,6 +56,7 @@ const GroupMeBot = {
 			};
 		});
 		const { payload } = await uploadImage(this.token, image);
+		console.log(`Posting message to GroupMe: ${message} with image: ${payload.picture_url}`);
 		return postMessageAsBot(this.bot_id, message, payload.picture_url);
 	},
 };
