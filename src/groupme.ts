@@ -32,8 +32,13 @@ const uploadImage = async (accessToken: string, image: ImageData): Promise<Image
 			'Content-Type': image.contentType,
 		},
 		body: image.binaryData,
-	}).then(response => response.json())
-		.catch(error => console.error('Could not upload image to GroupMe:', error));
+	}).then(response => {
+		if (!response.ok) {
+			console.error('Response:', response);
+			throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
+		}
+		return response.json();
+	}).catch(error => console.error('Could not upload image to GroupMe:', error));
 };
 
 const GroupMeBot = {
