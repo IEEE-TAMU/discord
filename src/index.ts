@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import GroupMeBot from './groupme';
+import { createApiServer } from './api';
 
 const groupmeBot = GroupMeBot;
 
@@ -15,11 +16,39 @@ const client = new Client({
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMessages,
 		GatewayIntentBits.MessageContent,
+		// Required for role management
+		GatewayIntentBits.GuildMembers,
 	],
 });
 
 client.once(Events.ClientReady, readyClient => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+	// Start the API server after Discord client is ready
+	try {
+		const { server } = createApiServer(client);
+		console.log('API server started successfully');
+
+		// Graceful shutdown
+		process.on('SIGTERM', () => {
+			console.log('Received SIGTERM, shutting down gracefully');
+			server.close(() => {
+				client.destroy();
+				process.exit(0);
+			});
+		});
+
+		process.on('SIGINT', () => {
+			console.log('Received SIGINT, shutting down gracefully');
+			server.close(() => {
+				client.destroy();
+				process.exit(0);
+			});
+		});
+	}
+	catch (error) {
+		console.error('Failed to start API server:', error);
+	}
 });
 
 client.on(Events.MessageCreate, async msg => {
