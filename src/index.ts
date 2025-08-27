@@ -4,12 +4,16 @@ import { createApiServer } from './api';
 
 const groupmeBot = GroupMeBot;
 
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || (function() {
-	throw new Error('The DISCORD_TOKEN environment variable is required.');
-})();
-const MONITOR_CHANNEL_ID = process.env.MONITOR_CHANNEL_ID || (function() {
-	throw new Error('The MONITOR_CHANNEL_ID environment variable is required.');
-})();
+const DISCORD_TOKEN =
+	process.env.DISCORD_TOKEN ||
+	(function () {
+		throw new Error('The DISCORD_TOKEN environment variable is required.');
+	})();
+const MONITOR_CHANNEL_ID =
+	process.env.MONITOR_CHANNEL_ID ||
+	(function () {
+		throw new Error('The MONITOR_CHANNEL_ID environment variable is required.');
+	})();
 
 const client = new Client({
 	intents: [
@@ -21,7 +25,7 @@ const client = new Client({
 	],
 });
 
-client.once(Events.ClientReady, readyClient => {
+client.once(Events.ClientReady, (readyClient) => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
 	// Start the API server after Discord client is ready
@@ -45,13 +49,12 @@ client.once(Events.ClientReady, readyClient => {
 				process.exit(0);
 			});
 		});
-	}
-	catch (error) {
+	} catch (error) {
 		console.error('Failed to start API server:', error);
 	}
 });
 
-client.on(Events.MessageCreate, async msg => {
+client.on(Events.MessageCreate, async (msg) => {
 	if (msg.author.bot) return;
 	if (msg.channelId !== MONITOR_CHANNEL_ID) return;
 	if (msg.content === '' && msg.attachments.size === 0) return;

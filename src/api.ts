@@ -78,8 +78,8 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 			}
 
 			const roles = member.roles.cache
-				.filter(role => role.name !== '@everyone')
-				.map(role => ({
+				.filter((role) => role.name !== '@everyone')
+				.map((role) => ({
 					id: role.id,
 					name: role.name,
 					color: role.hexColor,
@@ -92,9 +92,7 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				displayName: member.displayName,
 				roles,
 			} as UserRolesResponse);
-
-		}
-		catch (error) {
+		} catch (error) {
 			console.error('Error fetching user roles:', error);
 			return res.status(500).json({
 				success: false,
@@ -133,9 +131,7 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 			}
 
 			// Find the role
-			const role = guild.roles.cache.find(r =>
-				r.name.toLowerCase() === roleName.toLowerCase(),
-			);
+			const role = guild.roles.cache.find((r) => r.name.toLowerCase() === roleName.toLowerCase());
 
 			if (!role) {
 				return res.status(404).json({
@@ -166,9 +162,7 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				userId: member.id,
 				roleName,
 			} as RoleResponse);
-
-		}
-		catch (error) {
+		} catch (error) {
 			console.error('Error adding role:', error);
 			return res.status(500).json({
 				success: false,
@@ -207,9 +201,7 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 			}
 
 			// Find the role
-			const role = guild.roles.cache.find(r =>
-				r.name.toLowerCase() === roleName.toLowerCase(),
-			);
+			const role = guild.roles.cache.find((r) => r.name.toLowerCase() === roleName.toLowerCase());
 
 			if (!role) {
 				return res.status(404).json({
@@ -240,9 +232,7 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				userId: member.id,
 				roleName,
 			} as RoleResponse);
-
-		}
-		catch (error) {
+		} catch (error) {
 			console.error('Error removing role:', error);
 			return res.status(500).json({
 				success: false,

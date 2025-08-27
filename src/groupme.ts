@@ -9,19 +9,19 @@ const postMessageAsBot = async (bot_id: string, text: string, picture_url?: URL)
 			text,
 			picture_url,
 		}),
-	}).catch(error => console.error('Could not post message to GroupMe:', error));
+	}).catch((error) => console.error('Could not post message to GroupMe:', error));
 };
 
 interface ImageData {
-    binaryData: ArrayBuffer | Uint8Array | Buffer;
-    contentType: string;
+	binaryData: ArrayBuffer | Uint8Array | Buffer;
+	contentType: string;
 }
 
 interface ImageUploadResponse {
-    payload: {
-        url: URL;
-        picture_url: URL;
-    };
+	payload: {
+		url: URL;
+		picture_url: URL;
+	};
 }
 
 const uploadImage = async (accessToken: string, image: ImageData): Promise<ImageUploadResponse> => {
@@ -32,29 +32,35 @@ const uploadImage = async (accessToken: string, image: ImageData): Promise<Image
 			'Content-Type': image.contentType,
 		},
 		body: image.binaryData,
-	}).then(response => {
-		if (!response.ok) {
-			console.error('Response:', response);
-			throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
-		}
-		return response.json();
-	}).catch(error => console.error('Could not upload image to GroupMe:', error));
+	})
+		.then((response) => {
+			if (!response.ok) {
+				console.error('Response:', response);
+				throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
+			}
+			return response.json();
+		})
+		.catch((error) => console.error('Could not upload image to GroupMe:', error));
 };
 
 const GroupMeBot = {
-	bot_id: process.env.GROUPME_BOT_ID || (function() {
-		throw new Error('The GROUPME_BOT_ID environment variable is required.');
-	})(),
-	token: process.env.GROUPME_TOKEN || (function() {
-		throw new Error('The GROUPME_TOKEN environment variable is required.');
-	})(),
-	postMessage: async function(message: string, imageUrl?: string) {
+	bot_id:
+		process.env.GROUPME_BOT_ID ||
+		(function () {
+			throw new Error('The GROUPME_BOT_ID environment variable is required.');
+		})(),
+	token:
+		process.env.GROUPME_TOKEN ||
+		(function () {
+			throw new Error('The GROUPME_TOKEN environment variable is required.');
+		})(),
+	postMessage: async function (message: string, imageUrl?: string) {
 		if (!imageUrl) {
 			console.log(`Posting message to GroupMe: ${message}`);
 			return postMessageAsBot(this.bot_id, message);
 		}
 		console.log(`Uploading image from ${imageUrl} to GroupMe`);
-		const image = await fetch(imageUrl).then(async response => {
+		const image = await fetch(imageUrl).then(async (response) => {
 			return {
 				contentType: response.headers.get('Content-Type')!,
 				binaryData: new Uint8Array(await response.arrayBuffer()),
