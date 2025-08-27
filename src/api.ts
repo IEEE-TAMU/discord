@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { Client } from 'discord.js';
+import { triggerCalendarSync } from './calendarSync';
 
 interface RoleManageRequest {
 	userId: string;
@@ -46,6 +47,17 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 			bot: discordClient.user?.tag || 'Not logged in',
 			timestamp: new Date().toISOString(),
 		});
+	});
+
+	// Force calendar sync
+	app.post('/calendar/sync', async (_req, res) => {
+		try {
+			const result = await triggerCalendarSync();
+			return res.json({ success: result.started, message: result.message });
+		} catch (error) {
+			console.error('Error triggering calendar sync:', error);
+			return res.status(500).json({ success: false, message: 'Internal server error' });
+		}
 	});
 
 	// Get user roles endpoint

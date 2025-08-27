@@ -1,6 +1,6 @@
 # Discord Bot API
 
-This Discord bot includes a web-based API for managing user roles. The API runs on port 3000 by default and provides three simple endpoints for role management.
+This Discord bot includes a web-based API for managing user roles and triggering calendar syncs. The API runs on port 3000 by default.
 
 Since this app runs behind the IEEE TAMU firewall colocated with apps that use it, no authentication is used to ease simplicity of implementation. If this changes at any point then securing the bot should be considered.
 
@@ -100,6 +100,21 @@ Removes a role from a user.
 }
 ```
 
+### Trigger Calendar Sync (POST)
+```
+POST /calendar/sync
+```
+Forces a one-off calendar sync (if calendar sync is configured via env vars).
+
+**Response:**
+```json
+{ "success": true, "message": "Calendar sync triggered." }
+```
+or
+```json
+{ "success": false, "message": "Calendar sync not configured. Set CALENDAR_ICS_URL and GUILD_ID." }
+```
+
 ## Error Responses
 
 All endpoints return error responses in this format:
@@ -129,4 +144,7 @@ curl -X PUT http://localhost:3000/roles/manage \
 curl -X DELETE http://localhost:3000/roles/manage \
   -H "Content-Type: application/json" \
   -d '{"userId": "123456789012345678", "roleName": "Member"}'
+
+# Trigger a calendar sync
+curl -X POST http://localhost:3000/calendar/sync
 ```

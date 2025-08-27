@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits } from 'discord.js';
 import GroupMeBot from './groupme';
 import { createApiServer } from './api';
+import { startCalendarSync } from './calendarSync';
 
 const groupmeBot = GroupMeBot;
 
@@ -33,9 +34,13 @@ client.once(Events.ClientReady, (readyClient) => {
 		const { server } = createApiServer(client);
 		console.log('API server started successfully');
 
+		// Start Calendar Sync (if configured)
+		const sync = startCalendarSync(client);
+
 		// Graceful shutdown
 		process.on('SIGTERM', () => {
 			console.log('Received SIGTERM, shutting down gracefully');
+			sync?.stop?.();
 			server.close(() => {
 				client.destroy();
 				process.exit(0);
@@ -44,6 +49,7 @@ client.once(Events.ClientReady, (readyClient) => {
 
 		process.on('SIGINT', () => {
 			console.log('Received SIGINT, shutting down gracefully');
+			sync?.stop?.();
 			server.close(() => {
 				client.destroy();
 				process.exit(0);
