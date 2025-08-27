@@ -13,7 +13,7 @@ const postMessageAsBot = async (bot_id: string, text: string, picture_url?: URL)
 };
 
 interface ImageData {
-	binaryData: ArrayBuffer | Uint8Array | Buffer;
+	binaryData: Uint8Array<ArrayBuffer>;
 	contentType: string;
 }
 
