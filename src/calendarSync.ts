@@ -12,9 +12,9 @@ type CalendarEvent = {
 	end?: Date;
 };
 
-function buildDescription(base: string | undefined, key: string, url?: string): string {
+function buildDescription(base: string | undefined, key: string, rsvpUrl?: string): string {
 	const lines: string[] = [];
-	if (url) lines.push(`Link: ${url}`);
+	if (rsvpUrl) lines.push(`[RSVP Here](${rsvpUrl})`);
 	if (base) lines.push(base);
 	// lines.push('Imported from calendar. Changes here may be overwritten.');
 	// correlate the event with its source calendar entry (mark as spoiler to avoid display)
@@ -37,7 +37,7 @@ function toCalendarEvent(event: ical.CalendarComponent): CalendarEvent | null {
 	const uid = event.uid || `${event.summary}-${event.start?.toISOString()}`;
 	const name = event.summary || 'Untitled Event';
 	const location = event.location || 'External';
-	const url = event.url as string | undefined;
+	const rsvpUrl = (event as any)["RSVP-URL"];
 
 	if (event.rrule) {
 		console.log(`Skipping recurring event in toCalendarEvent: ${name}`);
@@ -45,7 +45,7 @@ function toCalendarEvent(event: ical.CalendarComponent): CalendarEvent | null {
 	}
 
 	const key = `${uid}`;
-	const description = buildDescription(event.description, key, url);
+	const description = buildDescription(event.description, key, rsvpUrl);
 	return { key, name, description, location, start: event.start, end: event.end };
 }
 
