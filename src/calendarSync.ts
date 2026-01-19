@@ -46,7 +46,15 @@ function toCalendarEvent(event: ical.CalendarComponent): CalendarEvent | null {
 
 	const key = `${uid}`;
 	const description = buildDescription(event.description, key, rsvpUrl);
-	return { key, name, description, location, start: event.start, end: event.end };
+	const start = event.start;
+	var end = event.end;
+
+	// external events must have an end time and cannot be the same as start
+	if (!end || start.getTime() === end.getTime()) {
+		const endTime = new Date(start.getTime() + 60 * 60 * 1000); // default to 1 hour later
+		end = Object.assign(endTime, { tz: start['tz'] });
+	}
+	return { key, name, description, location, start, end };
 }
 
 function needsUpdate(current: GuildScheduledEvent, target: CalendarEvent) {
