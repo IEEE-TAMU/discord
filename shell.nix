@@ -2,6 +2,6 @@
 pkgs.mkShellNoCC {
     nativeBuildInputs = builtins.attrValues {
         inherit (pkgs)
-        nodejs;
+        nodejs_24;
     };
 }
