@@ -1,5 +1,11 @@
 import { Client, GuildScheduledEvent, GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from 'discord.js';
-import ical from 'node-ical';
+import ical, { ParameterValue } from 'node-ical';
+
+function unwrapString(val: string | ParameterValue | undefined): string | undefined {
+	if (val === undefined) return undefined;
+	if (typeof val === 'string') return val;
+	return val.val;
+}
 
 // the meaningful parts extracted from an iCal entry
 type CalendarEvent = {
@@ -34,10 +40,10 @@ function getKey(event: GuildScheduledEvent): string | null {
 
 function toCalendarEvent(event: ical.CalendarComponent): CalendarEvent | null {
 	if (event.type !== 'VEVENT' || !event.start) return null;
-	const uid = event.uid || `${event.summary}-${event.start?.toISOString()}`;
-	const name = event.summary || 'Untitled Event';
-	const location = event.location || 'External';
-	const rsvpUrl = (event as any)["RSVP-URL"];
+	const uid = unwrapString(event.uid) || `${unwrapString(event.summary)}-${event.start?.toISOString()}`;
+	const name = unwrapString(event.summary) || 'Untitled Event';
+	const location = unwrapString(event.location) || 'External';
+	const rsvpUrl = unwrapString((event as Record<string, string | ParameterValue>)['RSVP-URL']);
 
 	if (event.rrule) {
 		console.log(`Skipping recurring event in toCalendarEvent: ${name}`);
@@ -45,13 +51,14 @@ function toCalendarEvent(event: ical.CalendarComponent): CalendarEvent | null {
 	}
 
 	const key = `${uid}`;
-	const description = buildDescription(event.description, key, rsvpUrl);
+	const description = buildDescription(unwrapString(event.description), key, rsvpUrl);
 	const start = event.start;
-	var end = event.end;
+	let end = event.end;
 
 	// external events must have an end time and cannot be the same as start
 	if (!end || start.getTime() === end.getTime()) {
-		const endTime = new Date(start.getTime() + 60 * 60 * 1000); // default to 1 hour later
+		// default to 1 hour
+		const endTime = new Date(start.getTime() + 60 * 60 * 1000);
 		end = Object.assign(endTime, { tz: start['tz'] });
 	}
 	return { key, name, description, location, start, end };
@@ -139,10 +146,12 @@ export function startCalendarSync(client: Client) {
 						});
 						// Add to index so subsequent operations see it
 						descIndex.set(calendar_event.key, created);
-					} catch (e) {
+					}
+					catch (e) {
 						console.error('Failed to create scheduled event', e);
 					}
-				} else if (needsUpdate(discord_event, calendar_event)) {
+				}
+				else if (needsUpdate(discord_event, calendar_event)) {
 					console.log(`Updating event: ${calendar_event.name}`);
 					try {
 						await discord_event.edit({
@@ -152,10 +161,12 @@ export function startCalendarSync(client: Client) {
 							scheduledEndTime: calendar_event.end,
 							entityMetadata: { location: calendar_event.location || 'External' },
 						});
-					} catch (e) {
+					}
+					catch (e) {
 						console.error(`Failed to update scheduled event ${discord_event.id}`, e);
 					}
-				} else {
+				}
+				else {
 					console.log(`No changes for: ${calendar_event.name}`);
 				}
 			}
@@ -167,15 +178,18 @@ export function startCalendarSync(client: Client) {
 					console.log(`Deleting event no longer in calendar: ${ev.name} (${ev.id})`);
 					try {
 						await ev.delete();
-					} catch (e) {
+					}
+					catch (e) {
 						console.error(`Failed to delete scheduled event ${ev.id}`, e);
 					}
 				}
 			}
 			console.log(`Calendar sync complete: ${calendar_events.length} events in window.`);
-		} catch (err) {
+		}
+		catch (err) {
 			console.error('Calendar sync error:', err);
-		} finally {
+		}
+		finally {
 			inProgress = false;
 		}
 	}
@@ -205,7 +219,8 @@ export async function triggerCalendarSync(): Promise<{ started: boolean; message
 	try {
 		await trigger();
 		return { started: true, message: 'Calendar sync triggered.' };
-	} catch (e) {
+	}
+	catch (e) {
 		console.error('Manual calendar sync failed:', e);
 		return { started: false, message: 'Manual calendar sync failed.' };
 	}

@@ -46,15 +46,15 @@ const uploadImage = async (accessToken: string, image: ImageData): Promise<Image
 const GroupMeBot = {
 	bot_id:
 		process.env.GROUPME_BOT_ID ||
-		(function () {
+		(function() {
 			throw new Error('The GROUPME_BOT_ID environment variable is required.');
 		})(),
 	token:
 		process.env.GROUPME_TOKEN ||
-		(function () {
+		(function() {
 			throw new Error('The GROUPME_TOKEN environment variable is required.');
 		})(),
-	postMessage: async function (message: string, imageUrl?: string) {
+	postMessage: async function(message: string, imageUrl?: string) {
 		if (!imageUrl) {
 			console.log(`Posting message to GroupMe: ${message}`);
 			return postMessageAsBot(this.bot_id, message);

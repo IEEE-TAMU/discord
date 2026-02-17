@@ -7,12 +7,12 @@ const groupmeBot = GroupMeBot;
 
 const DISCORD_TOKEN =
 	process.env.DISCORD_TOKEN ||
-	(function () {
+	(function() {
 		throw new Error('The DISCORD_TOKEN environment variable is required.');
 	})();
 const MONITOR_CHANNEL_ID =
 	process.env.MONITOR_CHANNEL_ID ||
-	(function () {
+	(function() {
 		throw new Error('The MONITOR_CHANNEL_ID environment variable is required.');
 	})();
 
@@ -55,7 +55,8 @@ client.once(Events.ClientReady, (readyClient) => {
 				process.exit(0);
 			});
 		});
-	} catch (error) {
+	}
+	catch (error) {
 		console.error('Failed to start API server:', error);
 	}
 });

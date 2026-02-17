@@ -54,7 +54,8 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 		try {
 			const result = await triggerCalendarSync();
 			return res.json({ success: result.started, message: result.message });
-		} catch (error) {
+		}
+		catch (error) {
 			console.error('Error triggering calendar sync:', error);
 			return res.status(500).json({ success: false, message: 'Internal server error' });
 		}
@@ -104,7 +105,8 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				displayName: member.displayName,
 				roles,
 			} as UserRolesResponse);
-		} catch (error) {
+		}
+		catch (error) {
 			console.error('Error fetching user roles:', error);
 			return res.status(500).json({
 				success: false,
@@ -174,7 +176,8 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				userId: member.id,
 				roleName,
 			} as RoleResponse);
-		} catch (error) {
+		}
+		catch (error) {
 			console.error('Error adding role:', error);
 			return res.status(500).json({
 				success: false,
@@ -244,7 +247,8 @@ export function createApiServer(discordClient: Client, guildId?: string) {
 				userId: member.id,
 				roleName,
 			} as RoleResponse);
-		} catch (error) {
+		}
+		catch (error) {
 			console.error('Error removing role:', error);
 			return res.status(500).json({
 				success: false,
