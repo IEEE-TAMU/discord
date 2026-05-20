@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "d5d2d622-3e06-4d73-8cec-6d308124f3aa",
+  "id": "9d5a5953-6945-4503-accb-97092f73e9cc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "boards": {
@@ -55,12 +55,6 @@
         }
       },
       "uniqueConstraints": {
-        "boards_name_unique": {
-          "name": "boards_name_unique",
-          "columns": [
-            "name"
-          ]
-        },
         "boards_channel_id_unique": {
           "name": "boards_channel_id_unique",
           "columns": [
@@ -68,73 +62,6 @@
           ]
         }
       },
-      "checkConstraint": {}
-    },
-    "card_notes": {
-      "name": "card_notes",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "card_id": {
-          "name": "card_id",
-          "type": "int",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "author_id": {
-          "name": "author_id",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(now())"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "card_notes_card_id_cards_id_fk": {
-          "name": "card_notes_card_id_cards_id_fk",
-          "tableFrom": "card_notes",
-          "tableTo": "cards",
-          "columnsFrom": [
-            "card_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "card_notes_id": {
-          "name": "card_notes_id",
-          "columns": [
-            "id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "cards": {
@@ -214,24 +141,63 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "cards_board_id_boards_id_fk": {
-          "name": "cards_board_id_boards_id_fk",
-          "tableFrom": "cards",
-          "tableTo": "boards",
-          "columnsFrom": [
-            "board_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {
         "cards_id": {
           "name": "cards_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "card_notes": {
+      "name": "card_notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "card_notes_id": {
+          "name": "card_notes_id",
           "columns": [
             "id"
           ]
@@ -288,21 +254,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "reminders_card_id_cards_id_fk": {
-          "name": "reminders_card_id_cards_id_fk",
-          "tableFrom": "reminders",
-          "tableTo": "cards",
-          "columnsFrom": [
-            "card_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {
         "reminders_id": {
           "name": "reminders_id",

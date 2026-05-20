@@ -1,35 +1,71 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { Effect, Option } from 'effect';
-import { BoardService } from './board';
-import { BoardNameTaken } from '../errors';
+import { Data, Effect, Array } from 'effect';
+import { eq } from 'drizzle-orm';
+import { DatabaseService } from '../db';
+import { boardTable } from './board.sql';
 
-export function getBuilder(): SlashCommandSubcommandBuilder {
-	return new SlashCommandSubcommandBuilder()
-		.setName('board')
-		.setDescription('Create a kanban board for this channel')
-		.addStringOption((o) => o.setName('name').setDescription('Board name (e.g., PR, Corporate, e-board)').setRequired(true));
-}
+export const COLUMNS = ['todo', 'in_progress', 'done'] as const;
+export type Column = (typeof COLUMNS)[number];
 
-export function execute(interaction: ChatInputCommandInteraction) {
-	const boardName = interaction.options.getString('name', true);
-	const channelId = interaction.channelId;
+export const COLUMN_LABELS: Record<Column, string> = {
+	todo: 'To Do',
+	in_progress: 'In Progress',
+	done: 'Done',
+};
 
-	return Effect.gen(function* () {
-		const boards = yield* BoardService;
+export const COLUMN_EMOJIS: Record<Column, string> = {
+	todo: '\u{1F4CB}',
+	in_progress: '\u2699\uFE0F',
+	done: '\u2705',
+};
 
-		const existing = yield* boards.getByChannel(channelId);
-		if (Option.isSome(existing)) {
-			return { content: `This channel already has board **${existing.value.name}**.`, ephemeral: true };
-		}
+export class BoardNotFound extends Data.TaggedError('BoardNotFound')<{
+	channelId?: string;
+	name?: string;
+}> {}
 
-		const board = yield* boards.create(boardName, channelId);
-		return `Board **${board.name}** created for this channel! Use \`/kanban create\` to add cards.`;
-	});
-}
+export class BoardNameTaken extends Data.TaggedError('BoardNameTaken')<{
+	name: string;
+}> {}
 
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
-	if (error instanceof BoardNameTaken) {
-		return { content: `Board name "${error.name}" is already used in another channel.`, ephemeral: true };
-	}
-	return { content: 'Failed to create board.', ephemeral: true };
-}
+export class BoardService extends Effect.Service<BoardService>()('BoardService', {
+	effect: Effect.gen(function* () {
+		const db = yield* DatabaseService;
+
+		const getByChannel = Effect.fn('BoardService.getByChannel')(function* (channelId: string) {
+			const board = yield* db.select().from(boardTable).where(eq(boardTable.channelId, channelId)).limit(1)
+				.pipe(Effect.map(Array.head));
+			return board;
+		});
+
+		const getById = Effect.fn('BoardService.getById')(function* (id: number) {
+			const board = yield* db.select().from(boardTable).where(eq(boardTable.id, id)).limit(1)
+				.pipe(Effect.map(Array.head));
+			return board;
+		});
+
+		const create = Effect.fn('BoardService.create')(function* (name: string, channelId: string) {
+			const inserted = yield* db.insert(boardTable).values({ name, channelId });
+
+			const board = yield* db.select().from(boardTable).where(eq(boardTable.id, inserted[0].insertId)).limit(1)
+				.pipe(Effect.map(Array.head));
+			return board;
+		});
+
+		const updateMessage = Effect.fn('BoardService.updateMessage')(function* (boardId: number, messageId: string) {
+			yield* db.update(boardTable).set({ messageId }).where(eq(boardTable.id, boardId));
+		});
+
+		const getByName = Effect.fn('BoardService.getByName')(function* (name: string) {
+			const board = yield* db.select().from(boardTable).where(eq(boardTable.name, name)).limit(1)
+				.pipe(Effect.map(Array.head));
+			return board;
+		});
+
+		const getAll = Effect.fn('BoardService.getAll')(function* () {
+			const boards = yield* db.select().from(boardTable);
+			return boards;
+		});
+
+		return { getByChannel, getById, getByName, create, updateMessage, getAll };
+	}),
+}) {}

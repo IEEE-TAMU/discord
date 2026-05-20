@@ -1,71 +1,26 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction } from 'discord.js';
-import { Effect, Layer } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from '../card/card';
-import { NoteService } from './note';
-import { CardNotFound } from '../errors';
+import { Effect, Array } from 'effect';
+import { eq, and, asc } from 'drizzle-orm';
+import { DatabaseService } from '../db';
+import { noteTable } from './note.sql';
 
-export function getBuilder(): SlashCommandSubcommandBuilder {
-	return new SlashCommandSubcommandBuilder()
-		.setName('note')
-		.setDescription('Add a note to a card')
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
-		.addStringOption((o) => o.setName('content').setDescription('Note content').setRequired(true));
-}
+export class NoteService extends Effect.Service<NoteService>()('NoteService', {
+	effect: Effect.gen(function* () {
+		const db = yield* DatabaseService;
 
-export function execute(interaction: ChatInputCommandInteraction) {
-	const cardInput = interaction.options.getString('card', true);
-	const content = interaction.options.getString('content', true);
-	const channelId = interaction.channelId;
-	const userId = interaction.user.id;
-	const cardId = parseInt(cardInput, 10);
+		const add = Effect.fn('NoteService.add')(function* (cardId: number, authorId: string, content: string) {
+			const inserted = yield* db.insert(noteTable).values({ cardId, authorId, content });
+			const created = yield* db.select().from(noteTable).where(eq(noteTable.id, inserted[0].insertId)).limit(1);
+			return Array.head(created);
+		});
 
-	return Effect.gen(function* () {
-		const boards = yield* BoardService;
-		const cards = yield* CardService;
-		const notes = yield* NoteService;
+		const getByCard = Effect.fn('NoteService.getByCard')(function* (cardId: number) {
+			return yield* db.select().from(noteTable).where(eq(noteTable.cardId, cardId)).orderBy(asc(noteTable.createdAt));
+		});
 
-		const board = yield* boards.getByChannel(channelId);
-		if (!board) {
-			return { content: 'No board exists for this channel.', ephemeral: true };
-		}
+		const deleteNote = Effect.fn('NoteService.delete')(function* (noteId: number, cardId: number) {
+			yield* db.delete(noteTable).where(and(eq(noteTable.id, noteId), eq(noteTable.cardId, cardId)));
+		});
 
-		const card = yield* cards.getByIdOrNull(cardId);
-		if (!card || card.boardId !== board.id) {
-			return yield* new CardNotFound({ cardId });
-		}
-
-		yield* notes.add(card.id, userId, content);
-		return `Note added to **#${card.id}: ${card.title}**.`;
-	});
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function autocomplete(interaction: AutocompleteInteraction, layer: Layer.Layer<any, any, any>) {
-	const focused = interaction.options.getFocused();
-	const channelId = interaction.channelId;
-
-	const results = await Effect.runPromise(
-		Effect.gen(function* () {
-			const boards = yield* BoardService;
-			const cards = yield* CardService;
-			const board = yield* boards.getByChannel(channelId);
-			if (!board) return [];
-			return yield* cards.search(board.id, focused);
-		}).pipe(Effect.provide(layer)) as Effect.Effect<unknown>,
-	);
-
-	const choices = (results as Array<{ id: number; title: string }>).map((card) => ({
-		name: `#${card.id} - ${card.title}`,
-		value: card.id.toString(),
-	}));
-
-	return interaction.respond(choices.slice(0, 25));
-}
-
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
-	if (error instanceof CardNotFound) {
-		return { content: 'Card not found on this board.', ephemeral: true };
-	}
-	return { content: 'Failed to add note.', ephemeral: true };
-}
+		return { add, getByCard, delete: deleteNote };
+	}),
+}) {}

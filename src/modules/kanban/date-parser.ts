@@ -1,11 +1,15 @@
-import { Option } from 'effect';
+import { Data, Option } from 'effect';
+
+export class InvalidDate extends Data.TaggedError('InvalidDate')<{
+	input: string;
+}> {}
 
 export function parseDate(input: string): Option.Option<Date> {
 	const now = new Date();
 	const relativeMatch = input.match(/^(\d+)([hwdm])$/);
 	if (relativeMatch) {
 		const value = parseInt(relativeMatch[1]!, 10);
-		const unit = relativeMatch[2];
+		const unit = relativeMatch[2]!;
 		switch (unit) {
 		case 'h':
 			return Option.some(new Date(now.getTime() + value * 60 * 60 * 1000));

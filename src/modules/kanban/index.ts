@@ -1,23 +1,27 @@
-import { Client, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, TextChannel, EmbedBuilder } from 'discord.js';
-import { Effect, Layer } from 'effect';
+import { Client, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, TextChannel, EmbedBuilder, MessageFlags } from 'discord.js';
+import { Effect, Layer, Option } from 'effect';
+import { MysqlDrizzle } from '@effect/sql-drizzle/Mysql';
 import type { DiscordModule } from '../index';
 import { DatabaseLive } from './db';
-import { BoardService } from './board/board';
-import { CardService } from './card/card';
-import { NoteService } from './note/note';
-import { ReminderService, DiscordClient } from './reminder/reminder';
+import { runMigrations } from './migrate';
+import { BoardService } from './board';
+import { CardService } from './card';
+import { NoteService } from './note';
+import { ReminderService } from './reminder';
+import { ReminderRunner } from './services/reminder';
 import { RenderService } from './render';
 import { KanbanConfig } from './config';
+import { DiscordClient } from './discord';
 
-import * as boardCmd from './board';
-import * as createCmd from './card/create';
-import * as moveCmd from './card/move';
-import * as editCmd from './card/edit';
-import * as deleteCmd from './card/delete';
-import * as dueCmd from './card/due';
-import * as listCmd from './list';
-import * as remindCmd from './reminder';
-import * as noteCmd from './note';
+import * as boardCmd from './commands/board';
+import * as createCmd from './commands/create';
+import * as moveCmd from './commands/move';
+import * as editCmd from './commands/edit';
+import * as deleteCmd from './commands/delete';
+import * as dueCmd from './commands/due';
+import * as listCmd from './commands/list';
+import * as remindCmd from './commands/remind';
+import * as noteCmd from './commands/note';
 
 const MODULE_NAME = 'kanban';
 
@@ -35,8 +39,8 @@ const kanbanCommand = new SlashCommandBuilder()
 	.addSubcommand(noteCmd.getBuilder);
 
 type CommandModule = {
-	execute: (interaction: ChatInputCommandInteraction) => Effect.Effect<string | { content: string; ephemeral: boolean } | { embed: EmbedBuilder; board: { id: number; name: string; messageId: string | null } }, unknown, unknown>;
-	handleError: (error: unknown) => { content: string; ephemeral: boolean } | string;
+	execute: (interaction: ChatInputCommandInteraction) => Effect.Effect<string | { content: string; flags: number } | { embed: EmbedBuilder; board: { id: number; name: string; messageId: string | null } }, unknown, unknown>;
+	handleError: (error: unknown) => { content: string; flags: number } | string;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	autocomplete?: (interaction: AutocompleteInteraction, layer: Layer.Layer<any, any, any>) => Promise<void>;
 };
@@ -55,16 +59,18 @@ const commandMap: Record<string, CommandModule> = {
 
 const mutatingCommands = new Set(['create', 'move', 'edit', 'delete', 'note']);
 
-const KanbanServicesLive = Layer.mergeAll(
+const DatabaseLayer = Layer.mergeAll(
 	BoardService.Default,
 	CardService.Default,
 	NoteService.Default,
 	ReminderService.Default,
-	RenderService.Default,
+).pipe(
+	Layer.provideMerge(DatabaseLive),
 );
 
-const KanbanLive = KanbanServicesLive.pipe(
-	Layer.provide(DatabaseLive),
+const KanbanLive = ReminderRunner.Default.pipe(
+	Layer.provideMerge(DatabaseLayer),
+	Layer.provide(RenderService.Default),
 );
 
 export const kanbanModule: DiscordModule = {
@@ -112,14 +118,22 @@ export const kanbanModule: DiscordModule = {
 				) as Effect.Effect<A, E, never>,
 			);
 
-		run(
-			Effect.gen(function* () {
-				const reminderService = yield* ReminderService;
-				yield* reminderService.start();
-			}),
-		).catch((e) => {
-			console.error(`${MODULE_NAME}: Failed to initialize:`, e);
-		});
+		runMigrations()
+			.then(() => {
+				run(
+					Effect.gen(function* () {
+						const drizzle = yield* MysqlDrizzle;
+						yield* Effect.tryPromise(() => drizzle.execute('SELECT 1'));
+						const runner = yield* ReminderRunner;
+						yield* runner.start();
+					}),
+				).catch((e) => {
+					console.error(`${MODULE_NAME}: Failed to initialize:`, e);
+				});
+			})
+			.catch((e) => {
+				console.error(`${MODULE_NAME}: Migration failed:`, e);
+			});
 
 		client.on('interactionCreate', async (interaction) => {
 			if (interaction.isChatInputCommand() && interaction.commandName === 'kanban') {
@@ -132,7 +146,7 @@ export const kanbanModule: DiscordModule = {
 
 					if (typeof result === 'string') {
 						if (!interaction.replied && !interaction.deferred) {
-							await interaction.reply({ content: result, ephemeral: false });
+							await interaction.reply({ content: result });
 						}
 					}
 					else if ('content' in result) {
@@ -176,7 +190,7 @@ export const kanbanModule: DiscordModule = {
 				catch (error) {
 					const response = cmd.handleError(error);
 					if (!interaction.replied && !interaction.deferred) {
-						await interaction.reply(typeof response === 'string' ? { content: response, ephemeral: true } : response);
+						await interaction.reply(typeof response === 'string' ? { content: response, flags: MessageFlags.Ephemeral } : response);
 					}
 				}
 			}
@@ -218,7 +232,7 @@ export const kanbanModule: DiscordModule = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function refreshBoardInChannel(client: Client, channelId: string, layer: Layer.Layer<any, any, any>) {
-	type RefreshResult = { board: { id: number; messageId: string | null }; embed: EmbedBuilder } | null;
+	type RefreshResult = { board: { id: number; name: string; messageId: string | null }; embed: EmbedBuilder } | null;
 
 	const result = await Effect.runPromise(
 		Effect.gen(function* () {
@@ -226,14 +240,14 @@ async function refreshBoardInChannel(client: Client, channelId: string, layer: L
 			const cs = yield* CardService;
 			const rs = yield* RenderService;
 			const b = yield* bs.getByChannel(channelId);
-			if (!b) return null;
-			const allCards = yield* cs.getByBoard(b.id);
+			if (Option.isNone(b)) return null;
+			const allCards = yield* cs.getByBoard(b.value.id);
 			const cardsByColumn = {
-				todo: allCards.filter((c) => c.column === 'todo'),
-				in_progress: allCards.filter((c) => c.column === 'in_progress'),
-				done: allCards.filter((c) => c.column === 'done'),
+				todo: allCards.filter((c: { column: string }) => c.column === 'todo'),
+				in_progress: allCards.filter((c: { column: string }) => c.column === 'in_progress'),
+				done: allCards.filter((c: { column: string }) => c.column === 'done'),
 			};
-			return { board: b, embed: rs.renderBoardEmbed(b.name, cardsByColumn) };
+			return { board: b.value, embed: rs.renderBoardEmbed(b.value.name, cardsByColumn) };
 		}).pipe(Effect.provide(layer), Effect.withConfigProvider(KanbanConfig)) as Effect.Effect<RefreshResult>,
 	);
 

@@ -1,8 +1,8 @@
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-	schema: './src/modules/kanban/db/schema.ts',
-	out: './src/modules/kanban/db/migrations',
+	schema: './src/modules/kanban/**/*.sql.ts',
+	out: './src/modules/kanban/migrations',
 	dialect: 'mysql',
 	dbCredentials: {
 		host: process.env.KANBAN_DB_HOST || '',

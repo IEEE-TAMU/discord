@@ -1,7 +1,7 @@
 import { EmbedBuilder, TextChannel } from 'discord.js';
 import { Effect } from 'effect';
-import type { Column } from '../types';
-import { COLUMN_LABELS, COLUMN_EMOJIS } from '../types';
+import type { Column } from '../board';
+import { COLUMN_LABELS, COLUMN_EMOJIS } from '../board';
 
 interface CardData {
 	id: number;

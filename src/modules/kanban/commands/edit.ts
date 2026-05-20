@@ -1,8 +1,8 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction } from 'discord.js';
-import { Effect, Layer } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from './card';
-import { CardNotFound, NoUpdateFields } from '../errors';
+import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, MessageFlags } from 'discord.js';
+import { Effect, Layer, Option } from 'effect';
+import { BoardService } from '../board';
+import { CardService } from '../card';
+import { CardNotFound, NoUpdateFields } from '../card';
 
 export function getBuilder(): SlashCommandSubcommandBuilder {
 	return new SlashCommandSubcommandBuilder()
@@ -25,12 +25,12 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		const cards = yield* CardService;
 
 		const board = yield* boards.getByChannel(channelId);
-		if (!board) {
-			return { content: 'No board exists for this channel.', ephemeral: true };
+		if (Option.isNone(board)) {
+			return { content: 'No board exists for this channel.', flags: MessageFlags.Ephemeral };
 		}
 
 		const card = yield* cards.getByIdOrNull(cardId);
-		if (!card || card.boardId !== board.id) {
+		if (Option.isNone(card) || card.value.boardId !== board.value.id) {
 			return yield* new CardNotFound({ cardId });
 		}
 
@@ -38,11 +38,14 @@ export function execute(interaction: ChatInputCommandInteraction) {
 			return yield* new NoUpdateFields();
 		}
 
-		const updated = yield* cards.update(card.id, {
+		const updated = yield* cards.update(card.value.id, {
 			title: title ?? undefined,
 			description: description !== undefined ? description : undefined,
 		});
-		return `Updated **#${updated.id}**: **${updated.title}**`;
+		if (Option.isNone(updated)) {
+			return { content: 'Failed to edit card.', flags: MessageFlags.Ephemeral };
+		}
+		return `Updated **#${updated.value.id}**: **${updated.value.title}**`;
 	});
 }
 
@@ -56,8 +59,8 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 			const boards = yield* BoardService;
 			const cards = yield* CardService;
 			const board = yield* boards.getByChannel(channelId);
-			if (!board) return [];
-			return yield* cards.search(board.id, focused);
+			if (Option.isNone(board)) return [];
+			return yield* cards.search(board.value.id, focused);
 		}).pipe(Effect.provide(layer)) as Effect.Effect<unknown>,
 	);
 
@@ -69,12 +72,12 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 	return interaction.respond(choices.slice(0, 25));
 }
 
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
+export function handleError(error: unknown): { content: string; flags: number } | string {
 	if (error instanceof CardNotFound) {
-		return { content: 'Card not found on this board.', ephemeral: true };
+		return { content: 'Card not found on this board.', flags: MessageFlags.Ephemeral };
 	}
 	if (error instanceof NoUpdateFields) {
-		return { content: 'Provide at least a title or description to update.', ephemeral: true };
+		return { content: 'Provide at least a title or description to update.', flags: MessageFlags.Ephemeral };
 	}
-	return { content: 'Failed to edit card.', ephemeral: true };
+	return { content: 'Failed to edit card.', flags: MessageFlags.Ephemeral };
 }

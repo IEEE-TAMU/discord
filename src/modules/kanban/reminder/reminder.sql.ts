@@ -1,6 +1,6 @@
 import { mysqlTable, varchar, int, datetime } from 'drizzle-orm/mysql-core';
 
-export const reminders = mysqlTable('reminders', {
+export const reminderTable = mysqlTable('reminders', {
 	id: int('id').autoincrement().primaryKey(),
 	cardId: int('card_id').notNull(),
 	userId: varchar('user_id', { length: 30 }).notNull(),

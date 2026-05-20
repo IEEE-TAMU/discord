@@ -1,9 +1,10 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction } from 'discord.js';
-import { Effect, Layer } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from './card';
+import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, MessageFlags } from 'discord.js';
+import { Effect, Layer, Option } from 'effect';
+import { BoardService } from '../board';
+import { CardService } from '../card';
 import { parseDate } from '../date-parser';
-import { CardNotFound, InvalidDate } from '../errors';
+import { CardNotFound } from '../card';
+import { InvalidDate } from '../date-parser';
 
 export function getBuilder(): SlashCommandSubcommandBuilder {
 	return new SlashCommandSubcommandBuilder()
@@ -24,31 +25,34 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		const cards = yield* CardService;
 
 		const board = yield* boards.getByChannel(channelId);
-		if (!board) {
-			return { content: 'No board exists for this channel.', ephemeral: true };
+		if (Option.isNone(board)) {
+			return { content: 'No board exists for this channel.', flags: MessageFlags.Ephemeral };
 		}
 
 		const card = yield* cards.getByIdOrNull(cardId);
-		if (!card || card.boardId !== board.id) {
+		if (Option.isNone(card) || card.value.boardId !== board.value.id) {
 			return yield* new CardNotFound({ cardId });
 		}
 
 		if (!dateStr) {
-			return { content: 'Provide a due date (1d, 2026-05-21) or "clear" to remove.', ephemeral: true };
+			return { content: 'Provide a due date (1d, 2026-05-21) or "clear" to remove.', flags: MessageFlags.Ephemeral };
 		}
 
 		if (dateStr.toLowerCase() === 'clear') {
-			yield* cards.clearField(card.id, 'dueDate');
-			return `Cleared due date for **#${card.id}: ${card.title}**.`;
+			yield* cards.clearField(card.value.id, 'dueDate');
+			return `Cleared due date for **#${card.value.id}: ${card.value.title}**.`;
 		}
 
 		const dueDate = parseDate(dateStr);
-		if (dueDate._tag === 'None') {
+		if (Option.isNone(dueDate)) {
 			return yield* new InvalidDate({ input: dateStr });
 		}
 
-		const updated = yield* cards.update(card.id, { dueDate: dueDate.value });
-		return `Set due date for **#${updated.id}: ${updated.title}** to ${dueDate.value.toLocaleDateString()}.`;
+		const updated = yield* cards.update(card.value.id, { dueDate: dueDate.value });
+		if (Option.isNone(updated)) {
+			return { content: 'Failed to set due date.', flags: MessageFlags.Ephemeral };
+		}
+		return `Set due date for **#${updated.value.id}: ${updated.value.title}** to ${dueDate.value.toLocaleDateString()}.`;
 	});
 }
 
@@ -62,8 +66,8 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 			const boards = yield* BoardService;
 			const cards = yield* CardService;
 			const board = yield* boards.getByChannel(channelId);
-			if (!board) return [];
-			return yield* cards.search(board.id, focused);
+			if (Option.isNone(board)) return [];
+			return yield* cards.search(board.value.id, focused);
 		}).pipe(Effect.provide(layer)) as Effect.Effect<unknown>,
 	);
 
@@ -75,12 +79,12 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 	return interaction.respond(choices.slice(0, 25));
 }
 
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
+export function handleError(error: unknown): { content: string; flags: number } | string {
 	if (error instanceof CardNotFound) {
-		return { content: 'Card not found on this board.', ephemeral: true };
+		return { content: 'Card not found on this board.', flags: MessageFlags.Ephemeral };
 	}
 	if (error instanceof InvalidDate) {
-		return { content: 'Invalid date format. Use relative (1d, 1w) or absolute (2026-05-21, tomorrow, next monday).', ephemeral: true };
+		return { content: 'Invalid date format. Use relative (1d, 1w) or absolute (2026-05-21, tomorrow, next monday).', flags: MessageFlags.Ephemeral };
 	}
-	return { content: 'Failed to set due date.', ephemeral: true };
+	return { content: 'Failed to set due date.', flags: MessageFlags.Ephemeral };
 }

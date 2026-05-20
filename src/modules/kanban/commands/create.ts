@@ -1,9 +1,10 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { Effect } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from './card';
+import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { Effect, Option } from 'effect';
+import { BoardService } from '../board';
+import { CardService } from '../card';
 import { parseDate } from '../date-parser';
-import { AssigneeConflict, InvalidDate } from '../errors';
+import { AssigneeConflict } from '../card';
+import { InvalidDate } from '../date-parser';
 
 export function getBuilder(): SlashCommandSubcommandBuilder {
 	return new SlashCommandSubcommandBuilder()
@@ -12,7 +13,7 @@ export function getBuilder(): SlashCommandSubcommandBuilder {
 		.addStringOption((o) => o.setName('title').setDescription('Card title').setRequired(true))
 		.addStringOption((o) => o.setName('description').setDescription('Card description (optional)'))
 		.addUserOption((o) => o.setName('assignee').setDescription('Assign to a user (optional)'))
-		.addRoleOption((o) => o.setName('assigneeRole').setDescription('Assign to a role (optional)'))
+		// .addRoleOption((o) => o.setName('assigneeRole').setDescription('Assign to a role (optional)'))
 		.addStringOption((o) => o.setName('due').setDescription('Due date (e.g., 1h, 2d, 1w, 2026-05-21, tomorrow)'));
 }
 
@@ -30,8 +31,8 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		const cards = yield* CardService;
 
 		const board = yield* boards.getByChannel(channelId);
-		if (!board) {
-			return { content: 'No board exists for this channel. Create one with `/kanban board`.', ephemeral: true };
+		if (Option.isNone(board)) {
+			return { content: 'No board exists for this channel. Create one with `/kanban board`.', flags: MessageFlags.Ephemeral };
 		}
 
 		if (assignee && assigneeRole) {
@@ -41,14 +42,14 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		let dueDate: Date | undefined;
 		if (dueStr) {
 			const parsed = parseDate(dueStr);
-			if (parsed._tag === 'None') {
+			if (Option.isNone(parsed)) {
 				return yield* new InvalidDate({ input: dueStr });
 			}
 			dueDate = parsed.value;
 		}
 
 		const card = yield* cards.create({
-			boardId: board.id,
+			boardId: board.value.id,
 			title,
 			description,
 			authorId,
@@ -57,7 +58,11 @@ export function execute(interaction: ChatInputCommandInteraction) {
 			dueDate,
 		});
 
-		let response = `Card **#${card.id}** created: **${card.title}** (To Do)`;
+		if (Option.isNone(card)) {
+			return { content: 'Failed to create card.', flags: MessageFlags.Ephemeral };
+		}
+
+		let response = `Card **#${card.value.id}** created: **${card.value.title}** (To Do)`;
 		if (assignee) response += ` (assigned to ${assignee.displayName})`;
 		else if (assigneeRole) response += ` (assigned to ${assigneeRole.name})`;
 		if (dueDate) response += ` (due: ${dueDate.toLocaleDateString()})`;
@@ -65,12 +70,12 @@ export function execute(interaction: ChatInputCommandInteraction) {
 	});
 }
 
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
-	if (error instanceof AssigneeConflict) {
-		return { content: 'Assign to either a user OR a role, not both.', ephemeral: true };
-	}
+export function handleError(error: unknown): { content: string; flags: number } | string {
+	// if (error instanceof InvalidAssignee) {
+	// 	return { content: 'Assign to either a user OR a role, not both.', flags: MessageFlags.Ephemeral };
+	// }
 	if (error instanceof InvalidDate) {
-		return { content: 'Invalid date format. Use relative (1h, 2d, 1w) or absolute (2026-05-21, tomorrow, next monday).', ephemeral: true };
+		return { content: 'Invalid date format. Use relative (1h, 2d, 1w) or absolute (2026-05-21, tomorrow, next monday).', flags: MessageFlags.Ephemeral };
 	}
-	return { content: 'Failed to create card.', ephemeral: true };
+	return { content: 'Failed to create card.', flags: MessageFlags.Ephemeral };
 }

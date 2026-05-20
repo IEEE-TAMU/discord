@@ -1,9 +1,9 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { Effect } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from '../card/card';
+import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { Effect, Option } from 'effect';
+import { BoardService } from '../board';
+import { CardService } from '../card';
 import { RenderService } from '../render';
-import type { Column } from '../types';
+import type { Column } from '../board';
 
 export function getBuilder(): SlashCommandSubcommandBuilder {
 	return new SlashCommandSubcommandBuilder()
@@ -24,29 +24,29 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		let board;
 		if (boardName) {
 			board = yield* boards.getByName(boardName);
-			if (!board) {
-				return { content: `Board "${boardName}" not found.`, ephemeral: true };
+			if (Option.isNone(board)) {
+				return { content: `Board "${boardName}" not found.`, flags: MessageFlags.Ephemeral };
 			}
 		}
 		else {
 			board = yield* boards.getByChannel(channelId);
-			if (!board) {
-				return { content: 'No board exists for this channel. Create one with `/kanban board`.', ephemeral: true };
+			if (Option.isNone(board)) {
+				return { content: 'No board exists for this channel. Create one with `/kanban board`.', flags: MessageFlags.Ephemeral };
 			}
 		}
 
-		const allCards = yield* cards.getByBoard(board.id);
+		const allCards = yield* cards.getByBoard(board.value.id);
 		const cardsByColumn: Record<Column, typeof allCards> = {
 			todo: allCards.filter((c) => c.column === 'todo'),
 			in_progress: allCards.filter((c) => c.column === 'in_progress'),
 			done: allCards.filter((c) => c.column === 'done'),
 		};
 
-		const embed = render.renderBoardEmbed(board.name, cardsByColumn);
-		return { embed, board };
+		const embed = render.renderBoardEmbed(board.value.name, cardsByColumn);
+		return { embed, board: board.value };
 	});
 }
 
-export function handleError(): { content: string; ephemeral: boolean } | string {
-	return { content: 'Failed to display board.', ephemeral: true };
+export function handleError(): { content: string; flags: number } | string {
+	return { content: 'Failed to display board.', flags: MessageFlags.Ephemeral };
 }

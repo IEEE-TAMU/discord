@@ -1,8 +1,8 @@
-import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction } from 'discord.js';
-import { Effect, Layer } from 'effect';
-import { BoardService } from '../board/board';
-import { CardService } from './card';
-import { CardNotFound } from '../errors';
+import { SlashCommandSubcommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, MessageFlags } from 'discord.js';
+import { Effect, Layer, Option } from 'effect';
+import { BoardService } from '../board';
+import { CardService } from '../card';
+import { CardNotFound } from '../card';
 
 export function getBuilder(): SlashCommandSubcommandBuilder {
 	return new SlashCommandSubcommandBuilder()
@@ -21,17 +21,17 @@ export function execute(interaction: ChatInputCommandInteraction) {
 		const cards = yield* CardService;
 
 		const board = yield* boards.getByChannel(channelId);
-		if (!board) {
-			return { content: 'No board exists for this channel.', ephemeral: true };
+		if (Option.isNone(board)) {
+			return { content: 'No board exists for this channel.', flags: MessageFlags.Ephemeral };
 		}
 
 		const card = yield* cards.getByIdOrNull(cardId);
-		if (!card || card.boardId !== board.id) {
+		if (Option.isNone(card) || card.value.boardId !== board.value.id) {
 			return yield* new CardNotFound({ cardId });
 		}
 
-		yield* cards.delete(card.id);
-		return `Deleted card **#${card.id}: ${card.title}**.`;
+		yield* cards.delete(card.value.id);
+		return `Deleted card **#${card.value.id}: ${card.value.title}**.`;
 	});
 }
 
@@ -45,8 +45,8 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 			const boards = yield* BoardService;
 			const cards = yield* CardService;
 			const board = yield* boards.getByChannel(channelId);
-			if (!board) return [];
-			return yield* cards.search(board.id, focused);
+			if (Option.isNone(board)) return [];
+			return yield* cards.search(board.value.id, focused);
 		}).pipe(Effect.provide(layer)) as Effect.Effect<unknown>,
 	);
 
@@ -58,9 +58,9 @@ export async function autocomplete(interaction: AutocompleteInteraction, layer: 
 	return interaction.respond(choices.slice(0, 25));
 }
 
-export function handleError(error: unknown): { content: string; ephemeral: boolean } | string {
+export function handleError(error: unknown): { content: string; flags: number } | string {
 	if (error instanceof CardNotFound) {
-		return { content: 'Card not found on this board.', ephemeral: true };
+		return { content: 'Card not found on this board.', flags: MessageFlags.Ephemeral };
 	}
-	return { content: 'Failed to delete card.', ephemeral: true };
+	return { content: 'Failed to delete card.', flags: MessageFlags.Ephemeral };
 }

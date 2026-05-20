@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "rm -rf dist && tsup src/index.ts --minify && mkdir -p dist/modules/kanban/db && cp -r src/modules/kanban/db/migrations dist/modules/kanban/db/migrations",
+    "build": "rm -rf dist && tsup src/index.ts --minify && mkdir -p dist/migrations/kanban && cp -r src/modules/kanban/migrations dist/migrations/kanban",
     "lint": "eslint src --fix",
     "clear-commands": "tsx scripts/clear-commands.ts",
     "db:generate": "drizzle-kit generate",

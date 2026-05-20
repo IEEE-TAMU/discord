@@ -1,6 +1,6 @@
 import { mysqlTable, varchar, int, text, datetime, timestamp, mysqlEnum } from 'drizzle-orm/mysql-core';
 
-export const cards = mysqlTable('cards', {
+export const cardTable = mysqlTable('cards', {
 	id: int('id').autoincrement().primaryKey(),
 	boardId: int('board_id').notNull(),
 	column: mysqlEnum('column', ['todo', 'in_progress', 'done']).notNull().default('todo'),
