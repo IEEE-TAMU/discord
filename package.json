@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "build": "tsup src/index.ts --minify",
-    "lint": "eslint src --fix"
+    "lint": "eslint src --fix",
+    "clear-commands": "tsx scripts/clear-commands.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
