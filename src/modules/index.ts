@@ -13,6 +13,5 @@ export type DiscordModule = {
 };
 
 export * from './calendarSync';
-export * from './groupme';
 export * from './health';
 export * from './memberManagement';
