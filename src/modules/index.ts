@@ -14,4 +14,5 @@ export type DiscordModule = {
 
 export * from './calendarSync';
 export * from './health';
+export * from './kanban';
 export * from './memberManagement';
