@@ -1,89 +1,52 @@
-import { Client, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction } from 'discord.js';
+import { Client, REST, Routes, SlashCommandBuilder, ChatInputCommandInteraction, AutocompleteInteraction, TextChannel } from 'discord.js';
 import type { DiscordModule } from '../index';
 import { getConnection, closeConnection, autoMigrate } from './db/connection';
 import { startReminderScheduler, stopReminderScheduler } from './services/reminderService';
+import { getBoardByChannel, updateBoardMessage } from './services/boardService';
+import { getCardsByBoard } from './services/cardService';
+import { renderBoardEmbed, sendBoardMessage } from './services/renderService';
+import type { Column } from './types';
 
-import * as boardCmd from './commands/board';
-import * as createCmd from './commands/create';
-import * as moveCmd from './commands/move';
-import * as editCmd from './commands/edit';
-import * as deleteCmd from './commands/delete';
-import * as listCmd from './commands/list';
-import * as remindCmd from './commands/remind';
-import * as dueCmd from './commands/due';
+import * as cmds from './commands';
 
 const MODULE_NAME = 'kanban';
 
+const commandEntries = Object.entries(cmds) as [string, typeof cmds.board][];
+
 const kanbanCommand = new SlashCommandBuilder()
 	.setName('kanban')
-	.setDescription('Manage the kanban board')
-	.addSubcommand((sub) => sub
-		.setName('board')
-		.setDescription(boardCmd.data.description)
-		.addStringOption((o) => o.setName('name').setDescription('Board name (e.g., PR, Corporate, e-board)').setRequired(true)))
-	.addSubcommand((sub) => sub
-		.setName('create')
-		.setDescription(createCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('column').setDescription('Column').setRequired(true).addChoices(
-			{ name: 'To Do', value: 'todo' },
-			{ name: 'In Progress', value: 'in_progress' },
-			{ name: 'Done', value: 'done' },
-		))
-		.addStringOption((o) => o.setName('title').setDescription('Card title').setRequired(true))
-		.addStringOption((o) => o.setName('description').setDescription('Card description (optional)'))
-		.addUserOption((o) => o.setName('assignee').setDescription('Assign to a user (optional)'))
-		.addStringOption((o) => o.setName('due').setDescription('Due date (YYYY-MM-DD or YYYY-MM-DD HH:MM, optional)')))
-	.addSubcommand((sub) => sub
-		.setName('move')
-		.setDescription(moveCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
-		.addStringOption((o) => o.setName('column').setDescription('Target column').setRequired(true).addChoices(
-			{ name: 'To Do', value: 'todo' },
-			{ name: 'In Progress', value: 'in_progress' },
-			{ name: 'Done', value: 'done' },
-		)))
-	.addSubcommand((sub) => sub
-		.setName('edit')
-		.setDescription(editCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
-		.addStringOption((o) => o.setName('title').setDescription('New title (optional)'))
-		.addStringOption((o) => o.setName('description').setDescription('New description (optional)')))
-	.addSubcommand((sub) => sub
-		.setName('delete')
-		.setDescription(deleteCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true)))
-	.addSubcommand((sub) => sub
-		.setName('list')
-		.setDescription(listCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true)))
-	.addSubcommand((sub) => sub
-		.setName('remind')
-		.setDescription(remindCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
-		.addStringOption((o) => o.setName('time').setDescription('Reminder time (e.g., 2026-05-21 09:00 or 1h, 30m, 2d)').setRequired(true))
-		.addStringOption((o) => o.setName('message').setDescription('Custom reminder message (optional)')))
-	.addSubcommand((sub) => sub
-		.setName('due')
-		.setDescription(dueCmd.data.description)
-		.addStringOption((o) => o.setName('board').setDescription('Board name').setRequired(true))
-		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
-		.addStringOption((o) => o.setName('date').setDescription('Due date (YYYY-MM-DD or YYYY-MM-DD HH:MM, or "clear" to remove)')));
+	.setDescription('Manage the kanban board');
 
-const commandMap: Record<string, typeof boardCmd> = {
-	board: boardCmd,
-	create: createCmd,
-	move: moveCmd,
-	edit: editCmd,
-	delete: deleteCmd,
-	list: listCmd,
-	remind: remindCmd,
-	due: dueCmd,
-};
+for (const [, cmd] of commandEntries) {
+	kanbanCommand.addSubcommand(cmd.getBuilder);
+}
+
+const commandMap: Record<string, typeof cmds.board> = Object.fromEntries(commandEntries);
+
+async function refreshBoardInChannel(client: Client, channelId: string) {
+	const board = await getBoardByChannel(channelId);
+	if (!board || !board.messageId) return;
+
+	const guildId = process.env.GUILD_ID;
+	if (!guildId) return;
+
+	const guild = await client.guilds.fetch(guildId).catch(() => null);
+	if (!guild) return;
+
+	const channel = await guild.channels.fetch(channelId).catch(() => null);
+	if (!channel || !(channel instanceof TextChannel)) return;
+
+	const allCards = await getCardsByBoard(board.id);
+	const cardsByColumn: Record<Column, typeof allCards> = {
+		todo: allCards.filter((c) => c.column === 'todo'),
+		in_progress: allCards.filter((c) => c.column === 'in_progress'),
+		done: allCards.filter((c) => c.column === 'done'),
+	};
+
+	const embed = renderBoardEmbed(board.name, cardsByColumn);
+	const newMessageId = await sendBoardMessage(channel, embed, board.messageId);
+	await updateBoardMessage(board.id, newMessageId);
+}
 
 export const kanbanModule: DiscordModule = {
 	name: MODULE_NAME,
@@ -157,6 +120,11 @@ export const kanbanModule: DiscordModule = {
 				if (cmd) {
 					try {
 						await cmd.execute(interaction as ChatInputCommandInteraction);
+
+						const mutatingCommands = ['create', 'move', 'edit', 'delete', 'note'];
+						if (mutatingCommands.includes(subcommandName)) {
+							refreshBoardInChannel(client, interaction.channelId);
+						}
 					}
 					catch (error) {
 						console.error(`${MODULE_NAME}: Error executing /kanban ${subcommandName}:`, error);

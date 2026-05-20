@@ -1,20 +1,14 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
-import { updateCard, searchCards, getCardById } from '../services/cardService';
+import { updateCard, clearCardField, searchCards, getCardById } from '../services/cardService';
 
-export const data = new SlashCommandBuilder()
-	.setName('due')
-	.setDescription('Set or change a card\'s due date')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	)
-	.addStringOption((option) =>
-		option.setName('date')
-			.setDescription('Due date (e.g., 1d, 1w, 2026-05-21, tomorrow, next monday, or "clear")'),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('due')
+		.setDescription('Set or change a card\'s due date')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
+		.addStringOption((o) => o.setName('date').setDescription('Due date (e.g., 1d, 1w, 2026-05-21, tomorrow, next monday, or "clear")'));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -36,9 +30,16 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		return interaction.reply({ content: 'Provide a due date (1d, 2026-05-21) or "clear" to remove.', ephemeral: true });
 	}
 
-	let dueDate: Date | null;
+	let dueDate: Date;
 	if (dateStr.toLowerCase() === 'clear') {
-		dueDate = null;
+		try {
+			const updated = await clearCardField(card.id, 'dueDate');
+			await interaction.reply(`Cleared due date for **#${updated.id}: ${updated.title}**.`);
+		}
+		catch {
+			await interaction.reply({ content: 'Failed to clear due date.', ephemeral: true });
+		}
+		return;
 	}
 	else {
 		dueDate = parseDate(dateStr);
@@ -49,15 +50,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
 	try {
 		const updated = await updateCard(card.id, { dueDate });
-		if (dueDate) {
-			await interaction.reply(`Set due date for **#${updated.id}: ${updated.title}** to ${dueDate.toLocaleDateString()}.`);
-		}
-		else {
-			await interaction.reply(`Cleared due date for **#${updated.id}: ${updated.title}**.`);
-		}
+		await interaction.reply(`Set due date for **#${updated.id}: ${updated.title}** to ${dueDate.toLocaleDateString()}.`);
 	}
-	catch (error) {
-		console.error('Error setting due date:', error);
+	catch {
 		await interaction.reply({ content: 'Failed to set due date.', ephemeral: true });
 	}
 }
@@ -69,14 +64,14 @@ function parseDate(input: string): Date | null {
 		const value = parseInt(relativeMatch[1], 10);
 		const unit = relativeMatch[2];
 		switch (unit) {
-			case 'h':
-				return new Date(now.getTime() + value * 60 * 60 * 1000);
-			case 'd':
-				return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
-			case 'w':
-				return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
-			case 'm':
-				return new Date(now.getTime() + value * 30 * 24 * 60 * 60 * 1000);
+		case 'h':
+			return new Date(now.getTime() + value * 60 * 60 * 1000);
+		case 'd':
+			return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
+		case 'w':
+			return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
+		case 'm':
+			return new Date(now.getTime() + value * 30 * 24 * 60 * 60 * 1000);
 		}
 	}
 

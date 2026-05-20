@@ -1,11 +1,11 @@
-import { drizzle } from 'drizzle-orm/mysql2';
+import { drizzle, MySql2Database } from 'drizzle-orm/mysql2';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
 import mysql from 'mysql2/promise';
 import path from 'path';
 import * as schema from './schema';
 
 let pool: mysql.Pool | null = null;
-let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+let db: MySql2Database<typeof schema> | null = null;
 
 export function getConnection() {
 	if (!db) {
@@ -37,11 +37,11 @@ export function getConnection() {
 }
 
 export async function autoMigrate() {
-	const { db } = getConnection();
+	const conn = getConnection();
 	const isProd = process.env.NODE_ENV === 'production';
 	const migrationsFolder = path.join(process.cwd(), isProd ? 'dist/modules/kanban/db/migrations' : 'src/modules/kanban/db/migrations');
 
-	await migrate(db, { migrationsFolder });
+	await migrate(conn.db, { migrationsFolder });
 	console.log('kanban: Database migrations applied');
 }
 

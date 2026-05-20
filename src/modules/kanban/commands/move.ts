@@ -1,26 +1,18 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { moveCard, searchCards, getCardById } from '../services/cardService';
 import { COLUMN_LABELS } from '../types';
 
-export const data = new SlashCommandBuilder()
-	.setName('move')
-	.setDescription('Move a card to a different column')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	)
-	.addStringOption((option) =>
-		option.setName('column')
-			.setDescription('Target column')
-			.setRequired(true)
-			.addChoices(
-				{ name: 'In Progress', value: 'in_progress' },
-				{ name: 'Done', value: 'done' },
-			),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('move')
+		.setDescription('Move a card to a different column')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
+		.addStringOption((o) => o.setName('column').setDescription('Target column').setRequired(true).addChoices(
+			{ name: 'In Progress', value: 'in_progress' },
+			{ name: 'Done', value: 'done' },
+		));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -42,8 +34,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		const updated = await moveCard(card.id, column);
 		await interaction.reply(`Moved **#${updated.id} ${updated.title}** to **${COLUMN_LABELS[column]}**.`);
 	}
-	catch (error) {
-		console.error('Error moving card:', error);
+	catch {
 		await interaction.reply({ content: 'Failed to move card.', ephemeral: true });
 	}
 }

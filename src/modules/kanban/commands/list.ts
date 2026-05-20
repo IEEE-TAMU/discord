@@ -1,16 +1,15 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, TextChannel } from 'discord.js';
 import { getBoardByChannel, updateBoardMessage } from '../services/boardService';
 import { getCardsByBoard } from '../services/cardService';
 import { renderBoardEmbed, sendBoardMessage } from '../services/renderService';
 import type { Column } from '../types';
 
-export const data = new SlashCommandBuilder()
-	.setName('list')
-	.setDescription('Display the kanban board for this channel')
-	.addStringOption((option) =>
-		option.setName('name')
-			.setDescription('Board name to display from another channel (optional)'),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('list')
+		.setDescription('Display the kanban board')
+		.addStringOption((o) => o.setName('name').setDescription('Board name from another channel (optional)'));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const boardName = interaction.options.getString('name');
@@ -45,15 +44,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		if (!targetChannel || !('send' in targetChannel)) {
 			return interaction.editReply('Could not send board to this channel.');
 		}
-		const messageId = await sendBoardMessage(targetChannel as any, embed, board.messageId || undefined);
+		const messageId = await sendBoardMessage(targetChannel as TextChannel, embed, board.messageId || undefined);
 
 		if (!boardName) {
 			await updateBoardMessage(board.id, messageId);
 		}
 		await interaction.editReply(`Board **${board.name}** displayed.`);
 	}
-	catch (error) {
-		console.error('Error listing board:', error);
+	catch {
 		await interaction.editReply('Failed to display board.');
 	}
 }

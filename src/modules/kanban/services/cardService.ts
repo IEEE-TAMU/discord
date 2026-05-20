@@ -1,4 +1,4 @@
-import { eq, and, like, asc } from 'drizzle-orm';
+import { eq, and, like, asc, sql } from 'drizzle-orm';
 import { getConnection } from '../db/connection';
 import { cards, reminders } from '../db/schema';
 import type { Column } from '../types';
@@ -14,8 +14,8 @@ export async function createCard(params: {
 }) {
 	const { db } = getConnection();
 	const inserted = await db.insert(cards).values({ ...params, column: 'todo' }).$returningId();
-	const created = await db.select().from(cards).where(eq(cards.id, inserted[0].id)).limit(1);
-	return created[0];
+	const created = await db.select().from(cards).where(eq(cards.id, inserted[0]!.id)).limit(1);
+	return created[0]!;
 }
 
 export async function getCardById(id: number) {
@@ -38,12 +38,18 @@ export async function moveCard(cardId: number, column: Column) {
 export async function updateCard(cardId: number, params: {
 	title?: string;
 	description?: string;
-	assigneeUserId?: string | null;
-	assigneeRoleId?: string | null;
-	dueDate?: Date | null;
+	assigneeUserId?: string;
+	assigneeRoleId?: string;
+	dueDate?: Date;
 }) {
 	const { db } = getConnection();
 	await db.update(cards).set(params).where(eq(cards.id, cardId));
+	return getCardById(cardId);
+}
+
+export async function clearCardField(cardId: number, field: 'dueDate' | 'assigneeUserId' | 'assigneeRoleId') {
+	const { db } = getConnection();
+	await db.update(cards).set({ [field]: sql`null` }).where(eq(cards.id, cardId));
 	return getCardById(cardId);
 }
 

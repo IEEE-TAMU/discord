@@ -1,16 +1,13 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { deleteCard, searchCards, getCardById } from '../services/cardService';
 
-export const data = new SlashCommandBuilder()
-	.setName('delete')
-	.setDescription('Delete a card')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('delete')
+		.setDescription('Delete a card')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -31,8 +28,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		await deleteCard(card.id);
 		await interaction.reply(`Deleted card **#${card.id}: ${card.title}**.`);
 	}
-	catch (error) {
-		console.error('Error deleting card:', error);
+	catch {
 		await interaction.reply({ content: 'Failed to delete card.', ephemeral: true });
 	}
 }

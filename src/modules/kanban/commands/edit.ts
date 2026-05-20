@@ -1,24 +1,15 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { updateCard, searchCards, getCardById } from '../services/cardService';
 
-export const data = new SlashCommandBuilder()
-	.setName('edit')
-	.setDescription('Edit a card')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	)
-	.addStringOption((option) =>
-		option.setName('title')
-			.setDescription('New title (optional)'),
-	)
-	.addStringOption((option) =>
-		option.setName('description')
-			.setDescription('New description (optional)'),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('edit')
+		.setDescription('Edit a card')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
+		.addStringOption((o) => o.setName('title').setDescription('New title (optional)'))
+		.addStringOption((o) => o.setName('description').setDescription('New description (optional)'));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -48,8 +39,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		});
 		await interaction.reply(`Updated **#${updated.id}**: **${updated.title}**`);
 	}
-	catch (error) {
-		console.error('Error editing card:', error);
+	catch {
 		await interaction.reply({ content: 'Failed to edit card.', ephemeral: true });
 	}
 }

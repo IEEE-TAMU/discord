@@ -1,4 +1,4 @@
-import { eq, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { getConnection } from '../db/connection';
 import { cardNotes } from '../db/schema';
 

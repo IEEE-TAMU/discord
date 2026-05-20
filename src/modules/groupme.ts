@@ -1,5 +1,5 @@
 import { Client, Events, Message } from 'discord.js';
-import { DiscordModule } from './index';
+import type { DiscordModule } from './index';
 
 const postMessageAsBot = async (bot_id: string, text: string, picture_url?: URL) => {
 	return fetch('https://api.groupme.com/v3/bots/post', {
@@ -41,9 +41,8 @@ const uploadImage = async (accessToken: string, image: ImageData): Promise<Image
 				console.error('Response:', response);
 				throw new Error(`Failed to upload image: ${response.status} ${response.statusText}`);
 			}
-			return response.json();
-		})
-		.catch((error) => console.error('Could not upload image to GroupMe:', error));
+			return response.json() as Promise<ImageUploadResponse>;
+		});
 };
 
 const MODULE_NAME = 'groupme';

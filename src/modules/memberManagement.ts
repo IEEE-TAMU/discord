@@ -1,6 +1,6 @@
 import { Client } from 'discord.js';
-import { Express } from 'express';
-import { DiscordModule } from './index';
+import type { Express } from 'express';
+import type { DiscordModule } from './index';
 
 interface RoleManageRequest {
 	userId: string;

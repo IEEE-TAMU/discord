@@ -1,6 +1,6 @@
 import { Client } from 'discord.js';
 import type { Express } from 'express';
-import { DiscordModule } from './index';
+import type { DiscordModule } from './index';
 
 const MODULE_NAME = 'health';
 

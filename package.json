@@ -24,12 +24,16 @@
     "typescript-eslint": "^8.25.0"
   },
   "dependencies": {
+    "@effect/platform": "^0.96.0",
+    "@effect/sql": "^0.51.0",
+    "@effect/sql-drizzle": "^0.50.0",
+    "@effect/sql-mysql2": "^0.52.0",
     "cors": "^2.8.5",
     "discord.js": "^14.18.0",
     "drizzle-orm": "^0.45.2",
+    "effect": "^3.21.0",
     "express": "^5.1.0",
-    "mysql2": "^3.23.1",
-    "node-cron": "^4.6.0",
+    "mysql2": "^3.22.3",
     "node-ical": "^0.27.0"
   }
 }

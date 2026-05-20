@@ -7,7 +7,8 @@ interface CardData {
 	title: string;
 	description: string | null;
 	column: Column;
-	assigneeId: string | null;
+	assigneeUserId: string | null;
+	assigneeRoleId: string | null;
 	dueDate: Date | null;
 }
 
@@ -28,8 +29,11 @@ export function renderBoardEmbed(boardName: string, cardsByColumn: Record<Column
 		else {
 			const lines = colCards.map((card) => {
 				let line = `**#${card.id}** ${card.title}`;
-				if (card.assigneeId) {
-					line += ` (<@${card.assigneeId}>)`;
+				if (card.assigneeUserId) {
+					line += ` (<@${card.assigneeUserId}>)`;
+				}
+				else if (card.assigneeRoleId) {
+					line += ` (<@&${card.assigneeRoleId}>)`;
 				}
 				if (card.dueDate) {
 					const isOverdue = card.dueDate < new Date() && col !== 'done';
@@ -79,7 +83,8 @@ export function renderDigestEmbed(boardName: string, cards: CardData[], type: 'd
 		const dateCards = grouped[date];
 		const lines = dateCards.map((card) => {
 			let line = `**#${card.id}** ${card.title}`;
-			if (card.assigneeId) line += ` (<@${card.assigneeId}>)`;
+			if (card.assigneeUserId) line += ` (<@${card.assigneeUserId}>)`;
+			else if (card.assigneeRoleId) line += ` (<@&${card.assigneeRoleId}>)`;
 			return line;
 		});
 		sections.push(`**${date}**\n${lines.join('\n')}`);

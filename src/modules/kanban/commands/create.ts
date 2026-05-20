@@ -1,31 +1,17 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { createCard } from '../services/cardService';
 
-export const data = new SlashCommandBuilder()
-	.setName('create')
-	.setDescription('Add a new card to this board')
-	.addStringOption((option) =>
-		option.setName('title')
-			.setDescription('Card title')
-			.setRequired(true),
-	)
-	.addStringOption((option) =>
-		option.setName('description')
-			.setDescription('Card description (optional)'),
-	)
-	.addUserOption((option) =>
-		option.setName('assignee')
-			.setDescription('Assign to a user (optional)'),
-	)
-	.addRoleOption((option) =>
-		option.setName('assigneeRole')
-			.setDescription('Assign to a role (optional)'),
-	)
-	.addStringOption((option) =>
-		option.setName('due')
-			.setDescription('Due date (e.g., 1h, 2d, 1w, 2026-05-21, tomorrow, next monday)'),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('create')
+		.setDescription('Add a new card to this board')
+		.addStringOption((o) => o.setName('title').setDescription('Card title').setRequired(true))
+		.addStringOption((o) => o.setName('description').setDescription('Card description (optional)'))
+		.addUserOption((o) => o.setName('assignee').setDescription('Assign to a user (optional)'))
+		.addRoleOption((o) => o.setName('assigneeRole').setDescription('Assign to a role (optional)'))
+		.addStringOption((o) => o.setName('due').setDescription('Due date (e.g., 1h, 2d, 1w, 2026-05-21, tomorrow)'));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const title = interaction.options.getString('title', true);
@@ -43,12 +29,13 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		return interaction.reply({ content: 'Assign to either a user OR a role, not both.', ephemeral: true });
 	}
 
-	let dueDate: Date | undefined;
+	let dueDate: Date | undefined = undefined;
 	if (dueStr) {
-		dueDate = parseDate(dueStr);
-		if (!dueDate) {
+		const parsed = parseDate(dueStr);
+		if (!parsed) {
 			return interaction.reply({ content: 'Invalid date format. Use relative (1h, 2d, 1w) or absolute (2026-05-21, tomorrow, next monday).', ephemeral: true });
 		}
+		dueDate = parsed;
 	}
 
 	try {
@@ -66,11 +53,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		if (assignee) response += ` (assigned to ${assignee.displayName})`;
 		else if (assigneeRole) response += ` (assigned to ${assigneeRole.name})`;
 		if (dueDate) response += ` (due: ${dueDate.toLocaleDateString()})`;
-		await interaction.reply(response);
+		return interaction.reply(response);
 	}
-	catch (error) {
-		console.error('Error creating card:', error);
-		await interaction.reply({ content: 'Failed to create card.', ephemeral: true });
+	catch {
+		return interaction.reply({ content: 'Failed to create card.', ephemeral: true });
 	}
 }
 
@@ -78,17 +64,17 @@ function parseDate(input: string): Date | null {
 	const now = new Date();
 	const relativeMatch = input.match(/^(\d+)([hwdm])$/);
 	if (relativeMatch) {
-		const value = parseInt(relativeMatch[1], 10);
+		const value = parseInt(relativeMatch[1]!, 10);
 		const unit = relativeMatch[2];
 		switch (unit) {
-			case 'h':
-				return new Date(now.getTime() + value * 60 * 60 * 1000);
-			case 'd':
-				return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
-			case 'w':
-				return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
-			case 'm':
-				return new Date(now.getTime() + value * 30 * 24 * 60 * 60 * 1000);
+		case 'h':
+			return new Date(now.getTime() + value * 60 * 60 * 1000);
+		case 'd':
+			return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
+		case 'w':
+			return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
+		case 'm':
+			return new Date(now.getTime() + value * 30 * 24 * 60 * 60 * 1000);
 		}
 	}
 

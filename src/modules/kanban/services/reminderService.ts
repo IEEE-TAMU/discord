@@ -78,13 +78,11 @@ async function fireReminder(client: Client, reminder: typeof reminders.$inferSel
 	if (!channel || !(channel instanceof TextChannel)) return;
 
 	let content = '';
-	if (card.assigneeId) {
-		content += `<@${card.assigneeId}> `;
+	if (card.assigneeUserId) {
+		content += `<@${card.assigneeUserId}> `;
 	}
-
-	const role = guild.roles.cache.find((r) => r.name === board.name);
-	if (role) {
-		content += `<@&${role.id}> `;
+	else if (card.assigneeRoleId) {
+		content += `<@&${card.assigneeRoleId}> `;
 	}
 
 	content += reminder.message
@@ -130,17 +128,17 @@ async function sendDailyDigest(client: Client) {
 		const channel = await guild.channels.fetch(board.channelId).catch(() => null);
 		if (!channel || !(channel instanceof TextChannel)) continue;
 
-		const role = guild.roles.cache.find((r) => r.name === board.name);
 		const embed = renderDigestEmbed(board.name, dueCards.map((c) => ({
 			id: c.id,
 			title: c.title,
 			description: c.description,
 			column: c.column,
-			assigneeId: c.assigneeId,
+			assigneeUserId: c.assigneeUserId,
+			assigneeRoleId: c.assigneeRoleId,
 			dueDate: c.dueDate,
 		})), 'daily');
 
-		await sendDigestMessage(channel, embed, role?.id);
+		await sendDigestMessage(channel, embed);
 	}
 }
 
@@ -165,16 +163,16 @@ async function sendWeeklyDigest(client: Client) {
 		const channel = await guild.channels.fetch(board.channelId).catch(() => null);
 		if (!channel || !(channel instanceof TextChannel)) continue;
 
-		const role = guild.roles.cache.find((r) => r.name === board.name);
 		const embed = renderDigestEmbed(board.name, dueCards.map((c) => ({
 			id: c.id,
 			title: c.title,
 			description: c.description,
 			column: c.column,
-			assigneeId: c.assigneeId,
+			assigneeUserId: c.assigneeUserId,
+			assigneeRoleId: c.assigneeRoleId,
 			dueDate: c.dueDate,
 		})), 'weekly');
 
-		await sendDigestMessage(channel, embed, role?.id);
+		await sendDigestMessage(channel, embed);
 	}
 }

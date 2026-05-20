@@ -1,14 +1,12 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
-import { getBoardByChannel } from '../services/boardService';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder } from 'discord.js';
+import { getBoardByChannel, getBoardByName, getOrCreateBoard } from '../services/boardService';
 
-export const data = new SlashCommandBuilder()
-	.setName('board')
-	.setDescription('Create a kanban board for this channel')
-	.addStringOption((option) =>
-		option.setName('name')
-			.setDescription('Board name (e.g., PR, Corporate, e-board)')
-			.setRequired(true),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('board')
+		.setDescription('Create a kanban board for this channel')
+		.addStringOption((o) => o.setName('name').setDescription('Board name (e.g., PR, Corporate, e-board)').setRequired(true));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const boardName = interaction.options.getString('name', true);
@@ -26,10 +24,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 		}
 
 		const board = await getOrCreateBoard(boardName, channelId);
-		await interaction.reply(`Board **${board.name}** created for this channel! Use \`/kanban create\` to add cards.`);
+		return interaction.reply(`Board **${board.name}** created for this channel! Use \`/kanban create\` to add cards.`);
 	}
-	catch (error) {
-		console.error('Error creating board:', error);
-		await interaction.reply({ content: 'Failed to create board. Check database connection.', ephemeral: true });
+	catch {
+		return interaction.reply({ content: 'Failed to create board. Check database connection.', ephemeral: true });
 	}
 }

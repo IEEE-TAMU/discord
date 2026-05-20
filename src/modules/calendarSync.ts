@@ -1,7 +1,8 @@
 import { Client, GuildScheduledEvent, GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from 'discord.js';
-import ical, { CalendarComponent, ParameterValue } from 'node-ical';
-import { Express } from 'express';
-import { DiscordModule } from './index';
+import ical from 'node-ical';
+import type { CalendarComponent, ParameterValue } from 'node-ical';
+import type { Express } from 'express';
+import type { DiscordModule } from './index';
 
 function unwrapString(val: string | ParameterValue | undefined): string | undefined {
 	if (val === undefined) return undefined;

@@ -1,26 +1,16 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { searchCards, getCardById } from '../services/cardService';
 import { createReminder } from '../services/reminderService';
 
-export const data = new SlashCommandBuilder()
-	.setName('remind')
-	.setDescription('Set a reminder for a card')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	)
-	.addStringOption((option) =>
-		option.setName('time')
-			.setDescription('Reminder time (e.g., 1h, 30m, 2d, 1w, 2026-05-21 09:00)')
-			.setRequired(true),
-	)
-	.addStringOption((option) =>
-		option.setName('message')
-			.setDescription('Custom reminder message (optional)'),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('remind')
+		.setDescription('Set a reminder for a card')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
+		.addStringOption((o) => o.setName('time').setDescription('Reminder time (e.g., 1h, 30m, 2d, 1w, 2026-05-21 09:00)').setRequired(true))
+		.addStringOption((o) => o.setName('message').setDescription('Custom reminder message (optional)'));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -47,11 +37,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 	try {
 		const client = interaction.client;
 		await createReminder(client, card.id, interaction.user.id, remindAt, message);
-		await interaction.reply(`Reminder set for **#${card.id}: ${card.title}** at ${remindAt.toLocaleString()}.`);
+		return interaction.reply(`Reminder set for **#${card.id}: ${card.title}** at ${remindAt.toLocaleString()}.`);
 	}
-	catch (error) {
-		console.error('Error setting reminder:', error);
-		await interaction.reply({ content: 'Failed to set reminder.', ephemeral: true });
+	catch {
+		return interaction.reply({ content: 'Failed to set reminder.', ephemeral: true });
 	}
 }
 
@@ -59,17 +48,17 @@ function parseTime(input: string): Date | null {
 	const now = new Date();
 	const relativeMatch = input.match(/^(\d+)([hwdm])$/);
 	if (relativeMatch) {
-		const value = parseInt(relativeMatch[1], 10);
+		const value = parseInt(relativeMatch[1]!, 10);
 		const unit = relativeMatch[2];
 		switch (unit) {
-			case 'h':
-				return new Date(now.getTime() + value * 60 * 60 * 1000);
-			case 'm':
-				return new Date(now.getTime() + value * 60 * 1000);
-			case 'd':
-				return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
-			case 'w':
-				return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
+		case 'h':
+			return new Date(now.getTime() + value * 60 * 60 * 1000);
+		case 'm':
+			return new Date(now.getTime() + value * 60 * 1000);
+		case 'd':
+			return new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
+		case 'w':
+			return new Date(now.getTime() + value * 7 * 24 * 60 * 60 * 1000);
 		}
 	}
 

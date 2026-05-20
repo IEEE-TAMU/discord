@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "ace47214-a3ee-4adb-afb6-feda823ee362",
+  "id": "d5d2d622-3e06-4d73-8cec-6d308124f3aa",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "boards": {
@@ -60,8 +60,81 @@
           "columns": [
             "name"
           ]
+        },
+        "boards_channel_id_unique": {
+          "name": "boards_channel_id_unique",
+          "columns": [
+            "channel_id"
+          ]
         }
       },
+      "checkConstraint": {}
+    },
+    "card_notes": {
+      "name": "card_notes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "author_id": {
+          "name": "author_id",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(now())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "card_notes_card_id_cards_id_fk": {
+          "name": "card_notes_card_id_cards_id_fk",
+          "tableFrom": "card_notes",
+          "tableTo": "cards",
+          "columnsFrom": [
+            "card_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "card_notes_id": {
+          "name": "card_notes_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "checkConstraint": {}
     },
     "cards": {
@@ -110,8 +183,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "assignee_id": {
-          "name": "assignee_id",
+        "assignee_user_id": {
+          "name": "assignee_user_id",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "assignee_role_id": {
+          "name": "assignee_role_id",
           "type": "varchar(30)",
           "primaryKey": false,
           "notNull": false,

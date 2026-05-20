@@ -1,26 +1,15 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder, AutocompleteInteraction } from 'discord.js';
+import { ChatInputCommandInteraction, SlashCommandSubcommandBuilder, AutocompleteInteraction } from 'discord.js';
 import { getBoardByChannel } from '../services/boardService';
 import { searchCards, getCardById } from '../services/cardService';
-import { addNote, getNotesByCard } from '../services/noteService';
-import { getBoardByChannel as getBoardByChannel2, updateBoardMessage } from '../services/boardService';
-import { getCardsByBoard } from '../services/cardService';
-import { renderBoardEmbed, sendBoardMessage } from '../services/renderService';
-import type { Column } from '../types';
+import { addNote } from '../services/noteService';
 
-export const data = new SlashCommandBuilder()
-	.setName('note')
-	.setDescription('Add a note to a card')
-	.addStringOption((option) =>
-		option.setName('card')
-			.setDescription('Search for card by title or ID')
-			.setRequired(true)
-			.setAutocomplete(true),
-	)
-	.addStringOption((option) =>
-		option.setName('content')
-			.setDescription('Note content')
-			.setRequired(true),
-	);
+export function getBuilder(): SlashCommandSubcommandBuilder {
+	return new SlashCommandSubcommandBuilder()
+		.setName('note')
+		.setDescription('Add a note to a card')
+		.addStringOption((o) => o.setName('card').setDescription('Search for card by title or ID').setRequired(true).setAutocomplete(true))
+		.addStringOption((o) => o.setName('content').setDescription('Note content').setRequired(true));
+}
 
 export async function execute(interaction: ChatInputCommandInteraction) {
 	const cardInput = interaction.options.getString('card', true);
@@ -39,11 +28,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 	}
 
 	try {
-		const note = await addNote(card.id, interaction.user.id, content);
+		await addNote(card.id, interaction.user.id, content);
 		await interaction.reply(`Note added to **#${card.id}: ${card.title}**.`);
 	}
-	catch (error) {
-		console.error('Error adding note:', error);
+	catch {
 		await interaction.reply({ content: 'Failed to add note.', ephemeral: true });
 	}
 }
