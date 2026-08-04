@@ -1,10 +1,17 @@
 import { DiscordREST } from 'dfx';
-import { Context, Duration, Effect, Layer, Schedule } from 'effect';
+import { Context, Duration, Effect, Layer, Schedule, Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi';
 import { HttpServerResponse } from 'effect/unstable/http';
 import { AppConfig } from '../config.ts';
 
 type ScheduledEvent = Readonly<{ id: string; name: string; description: string | null }>;
+
+const SyncResponse = Schema.Struct({
+	success: Schema.Boolean,
+	message: Schema.String,
+});
+
+const toJson = HttpServerResponse.schemaJson(SyncResponse);
 
 export class CalendarTrigger extends Context.Service<CalendarTrigger, {
 	readonly trigger: Effect.Effect<void, never, AppConfig>;
@@ -124,7 +131,7 @@ export const CalendarSyncLive = Layer.effectDiscard(
 );
 
 export const CalendarSyncGroup = HttpApiGroup.make('calendarSync').add(
-	HttpApiEndpoint.post('triggerSync', '/calendar/sync'),
+	HttpApiEndpoint.post('triggerSync', '/calendar/sync', { success: SyncResponse }),
 );
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- handlers type is inferred by HttpApiBuilder.group
@@ -135,13 +142,13 @@ export function buildCalendarSyncHandlers(handlers: any) {
 			Effect.gen(function* () {
 				const config = yield* AppConfig;
 				if (!config.calendarIcsUrl || !config.guildId) {
-					return HttpServerResponse.jsonUnsafe({ success: false, message: 'Calendar sync not configured' }, { status: 404 });
+					return toJson({ success: false, message: 'Calendar sync not configured' }, { status: 404 });
 				}
 				yield* trigger.trigger;
-				return HttpServerResponse.jsonUnsafe({ success: true, message: 'Sync triggered' });
+				return toJson({ success: true, message: 'Sync triggered' });
 			}).pipe(
 				Effect.catch(() =>
-					Effect.succeed(HttpServerResponse.jsonUnsafe({ success: false, message: 'Sync failed' }, { status: 500 })),
+					Effect.succeed(toJson({ success: false, message: 'Sync failed' }, { status: 500 })),
 				),
 			),
 		);
