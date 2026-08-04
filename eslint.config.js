@@ -1,17 +1,15 @@
-// @ts-check
-const eslint = require('@eslint/js');
-const tseslint = require('typescript-eslint');
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
 
-module.exports = tseslint.config(
+export default tseslint.config(
 	eslint.configs.recommended,
-	tseslint.configs.recommended,
+	...tseslint.configs.recommended,
 	{
 		languageOptions: {
 			ecmaVersion: 'latest',
 		},
 		rules: {
 			'arrow-spacing': ['warn', { before: true, after: true }],
-			'brace-style': ['error', 'stroustrup', { allowSingleLine: true }],
 			'comma-dangle': ['error', 'always-multiline'],
 			'comma-spacing': 'error',
 			'comma-style': 'error',
@@ -20,7 +18,7 @@ module.exports = tseslint.config(
 			'handle-callback-err': 'off',
 			indent: ['error', 'tab'],
 			'keyword-spacing': 'error',
-			'max-nested-callbacks': ['error', { max: 4 }],
+			'max-nested-callbacks': ['error', { max: 6 }],
 			'max-statements-per-line': ['error', { max: 2 }],
 			'no-console': 'off',
 			'no-empty-function': 'error',
