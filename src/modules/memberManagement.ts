@@ -1,8 +1,7 @@
 import { DiscordREST } from 'dfx';
-import { Effect, Option, Schema } from 'effect';
+import { Config, ConfigProvider, Effect, Option, Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/unstable/httpapi';
 import { HttpServerResponse } from 'effect/unstable/http';
-import { AppConfig } from '../config.ts';
 
 type RoleRecord = Readonly<{ id: string; name: string; color: number }>;
 
@@ -54,20 +53,18 @@ export const MemberManagementGroup = HttpApiGroup.make('memberManagement').add(
 	}),
 );
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- handlers type is inferred by HttpApiBuilder.group
-export function buildMemberManagementHandlers(handlers: any) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildHandlers(handlers: any) {
 	return Effect.gen(function* () {
 		const rest = yield* DiscordREST;
+		const guildId = yield* Config.withDefault(Config.string('GUILD_ID'), '');
 
 		return handlers
 			.handle('getRoles', ({ query }: { query: { userId: string } }) =>
 				Effect.gen(function* () {
-					const config = yield* AppConfig;
-					if (!config.guildId) {
-						return badRequest('GUILD_ID not configured');
-					}
+					if (!guildId) return badRequest('GUILD_ID not configured');
 
-					const maybeMember = yield* rest.getGuildMember(config.guildId, query.userId).pipe(
+					const maybeMember = yield* rest.getGuildMember(guildId, query.userId).pipe(
 						Effect.map(Option.some),
 						Effect.catch(() => Effect.succeed(Option.none())),
 					);
@@ -79,63 +76,40 @@ export function buildMemberManagementHandlers(handlers: any) {
 					const member = maybeMember.value;
 					const roleIds: readonly string[] = member.roles ?? [];
 
-					const allRoles = yield* rest.listGuildRoles(config.guildId).pipe(
+					const allRoles = yield* rest.listGuildRoles(guildId).pipe(
 						Effect.catch(() => Effect.succeed([] as ReadonlyArray<RoleRecord>)),
 					);
 
 					const userRoles = allRoles
 						.filter((r) => roleIds.includes(r.id) && r.name !== '@everyone')
-						.map((r) => ({
-							id: r.id,
-							name: r.name,
-							color: `#${r.color.toString(16).padStart(6, '0')}`,
-						}));
+						.map((r) => ({ id: r.id, name: r.name, color: `#${r.color.toString(16).padStart(6, '0')}` }));
 
-					return toUserRolesJson({
-						success: true as const,
-						userId: query.userId,
-						username: member.user?.username ?? query.userId,
-						displayName: member.nick ?? member.user?.username ?? query.userId,
-						roles: userRoles,
-					});
+					return toUserRolesJson({ success: true as const, userId: query.userId, username: member.user?.username ?? query.userId, displayName: member.nick ?? member.user?.username ?? query.userId, roles: userRoles });
 				}),
 			)
 			.handle('addRole', ({ payload }: { payload: { userId: string; roleName: string } }) =>
-				manageRole(rest, payload.userId, payload.roleName, 'add'),
+				manageRole(rest, guildId, payload.userId, payload.roleName, 'add'),
 			)
 			.handle('removeRole', ({ payload }: { payload: { userId: string; roleName: string } }) =>
-				manageRole(rest, payload.userId, payload.roleName, 'remove'),
+				manageRole(rest, guildId, payload.userId, payload.roleName, 'remove'),
 			);
-	});
+	}).pipe(Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromEnv()));
 }
 
-function manageRole(
-	rest: DiscordREST['Service'],
-	userId: string,
-	roleName: string,
-	action: 'add' | 'remove',
-) {
+function manageRole(rest: DiscordREST['Service'], guildId: string, userId: string, roleName: string, action: 'add' | 'remove') {
 	return Effect.gen(function* () {
-		const config = yield* AppConfig;
-		if (!config.guildId) {
-			return badRequest('GUILD_ID not configured');
-		}
+		if (!guildId) return badRequest('GUILD_ID not configured');
 
-		const roles = yield* rest.listGuildRoles(config.guildId).pipe(
-			Effect.catch(() => Effect.succeed([] as ReadonlyArray<RoleRecord>)),
-		);
-
+		const roles = yield* rest.listGuildRoles(guildId).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<RoleRecord>)));
 		const role = roles.find((r: RoleRecord) => r.name.toLowerCase() === roleName.toLowerCase());
-		if (!role) {
-			return notFound(`Role '${roleName}' not found in guild`);
-		}
+		if (!role) return notFound(`Role '${roleName}' not found in guild`);
 
 		if (action === 'add') {
-			yield* rest.addGuildMemberRole(config.guildId, userId, role.id).pipe(Effect.catch(() => Effect.void));
+			yield* rest.addGuildMemberRole(guildId, userId, role.id).pipe(Effect.catch(() => Effect.void));
 			return toRoleJson({ success: true as const, message: `Successfully added ${roleName} role`, userId, roleName });
 		}
 
-		yield* rest.deleteGuildMemberRole(config.guildId, userId, role.id).pipe(Effect.catch(() => Effect.void));
+		yield* rest.deleteGuildMemberRole(guildId, userId, role.id).pipe(Effect.catch(() => Effect.void));
 		return toRoleJson({ success: true as const, message: `Successfully removed ${roleName} role`, userId, roleName });
 	});
 }

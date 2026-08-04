@@ -1,18 +1,12 @@
 import * as http from 'node:http';
-import { NodeFileSystem, NodeHttpClient, NodeHttpServer, NodePath, NodeRuntime } from '@effect/platform-node';
+import { NodeHttpClient, NodeHttpServer, NodeRuntime } from '@effect/platform-node';
 import { DiscordConfig, DiscordRESTLive, MemoryRateLimitStoreLive } from 'dfx';
-import { Config, Effect, Layer } from 'effect';
+import { Config, ConfigProvider, Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder, HttpApiSwagger } from 'effect/unstable/httpapi';
 import { HttpRouter } from 'effect/unstable/http';
-import { AppConfigLive } from './config.ts';
-import {
-	CalendarSyncGroup,
-	CalendarSyncLive,
-	CalendarTriggerLive,
-	buildCalendarSyncHandlers,
-} from './modules/calendarSync.ts';
-import { HealthGroup, buildHealthHandlers } from './modules/health.ts';
-import { MemberManagementGroup, buildMemberManagementHandlers } from './modules/memberManagement.ts';
+import { CalendarSyncGroup, CalendarSyncLive, CalendarTriggerLive, buildHandlers as buildCalendarHandlers } from './modules/calendarSync.ts';
+import { HealthGroup, buildHandlers as buildHealthHandlers } from './modules/health.ts';
+import { MemberManagementGroup, buildHandlers as buildMemberHandlers } from './modules/memberManagement.ts';
 
 const api = HttpApi.make('IEEE TAMU Discord Bot API')
 	.add(HealthGroup)
@@ -27,8 +21,8 @@ const DiscordLayer = DiscordRESTLive.pipe(
 
 const routerLayer = HttpApiBuilder.layer(api, { openapiPath: '/openapi.json' }).pipe(
 	Layer.provide(HttpApiBuilder.group(api, 'health', buildHealthHandlers)),
-	Layer.provide(HttpApiBuilder.group(api, 'memberManagement', buildMemberManagementHandlers)),
-	Layer.provide(HttpApiBuilder.group(api, 'calendarSync', buildCalendarSyncHandlers)),
+	Layer.provide(HttpApiBuilder.group(api, 'memberManagement', buildMemberHandlers)),
+	Layer.provide(HttpApiBuilder.group(api, 'calendarSync', buildCalendarHandlers)),
 );
 
 const appLayer = routerLayer.pipe(Layer.provide(HttpApiSwagger.layer(api)));
@@ -40,13 +34,14 @@ const serverLayer = HttpRouter.serve(appLayer).pipe(
 	})),
 );
 
+const CalendarLive = CalendarSyncLive.pipe(
+	Layer.provide(CalendarTriggerLive.pipe(Layer.provide(DiscordLayer))),
+);
+
 const MainLive = serverLayer.pipe(
 	Layer.provide(DiscordLayer),
-	Layer.provide(AppConfigLive),
-	Layer.provide(CalendarTriggerLive),
-	Layer.provide(CalendarSyncLive),
-	Layer.provide(NodeFileSystem.layer),
-	Layer.provide(NodePath.layer),
+	Layer.provide(CalendarLive),
+	Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnv())),
 );
 
 NodeRuntime.runMain(
