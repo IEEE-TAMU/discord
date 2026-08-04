@@ -6,10 +6,19 @@ export type ModuleStatus = {
 	missingRequirements?: string[];
 };
 
+export type OpenApiFragment = {
+	paths: Record<string, unknown>;
+	components?: {
+		schemas?: Record<string, unknown>;
+		[key: string]: unknown;
+	};
+};
+
 export type DiscordModule = {
 	name: string;
 	start(client: Client, app?: Express): ModuleStatus;
 	stop?(): void;
+	openapi?: OpenApiFragment;
 };
 
 export * from './calendarSync';

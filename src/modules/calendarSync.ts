@@ -210,4 +210,33 @@ export const calendarModule: DiscordModule = {
 
 		return { enabled: true };
 	},
+	openapi: {
+		paths: {
+			'/calendar/sync': {
+				post: {
+					tags: ['calendarSync'],
+					summary: 'Trigger calendar sync',
+					description: 'Forces a one-off calendar sync from the configured ICS URL.',
+					responses: {
+						200: {
+							description: 'Sync triggered',
+							content: {
+								'application/json': {
+									schema: {
+										type: 'object',
+										properties: {
+											success: { type: 'boolean' },
+											message: { type: 'string' },
+										},
+									},
+								},
+							},
+						},
+						404: { description: 'Calendar sync not configured' },
+						500: { description: 'Trigger failed' },
+					},
+				},
+			},
+		},
+	},
 };

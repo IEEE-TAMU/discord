@@ -15,4 +15,31 @@ export const healthModule: DiscordModule = {
 		});
 		return { enabled: true };
 	},
+	openapi: {
+		paths: {
+			'/health': {
+				get: {
+					tags: ['health'],
+					summary: 'Health check',
+					description: 'Returns the bot status and current timestamp.',
+					responses: {
+						200: {
+							description: 'Service is healthy',
+							content: {
+								'application/json': {
+									schema: {
+										type: 'object',
+										properties: {
+											status: { type: 'string', example: 'ok' },
+											timestamp: { type: 'string', format: 'date-time' },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
 };

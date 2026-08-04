@@ -145,6 +145,130 @@ export const memberManagementModule: DiscordModule = {
 
 		return { enabled: true };
 	},
+	openapi: {
+		components: {
+			schemas: {
+				RoleManageRequest: {
+					type: 'object',
+					required: ['userId', 'roleName'],
+					properties: {
+						userId: { type: 'string', example: '123456789012345678' },
+						roleName: { type: 'string', example: 'Member' },
+					},
+				},
+				RoleResponse: {
+					type: 'object',
+					properties: {
+						success: { type: 'boolean' },
+						message: { type: 'string' },
+						userId: { type: 'string' },
+						roleName: { type: 'string' },
+					},
+				},
+				UserRolesResponse: {
+					type: 'object',
+					properties: {
+						success: { type: 'boolean' },
+						userId: { type: 'string' },
+						username: { type: 'string' },
+						displayName: { type: 'string' },
+						roles: {
+							type: 'array',
+							items: {
+								type: 'object',
+								properties: {
+									id: { type: 'string' },
+									name: { type: 'string' },
+									color: { type: 'string', example: '#3498db' },
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		paths: {
+			'/roles': {
+				get: {
+					tags: ['memberManagement'],
+					summary: 'Get user roles',
+					description: 'Retrieves all roles for a specific user in the guild.',
+					parameters: [
+						{
+							name: 'userId',
+							in: 'query',
+							required: true,
+							description: 'Discord user ID',
+							schema: { type: 'string' },
+						},
+					],
+					responses: {
+						200: {
+							description: 'User roles retrieved',
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/UserRolesResponse' },
+								},
+							},
+						},
+						400: { description: 'Missing userId query parameter' },
+						404: { description: 'Guild or user not found' },
+						500: { description: 'Internal server error' },
+					},
+				},
+			},
+			'/roles/manage': {
+				put: {
+					tags: ['memberManagement'],
+					summary: 'Add role to user',
+					requestBody: {
+						required: true,
+						content: {
+							'application/json': {
+								schema: { $ref: '#/components/schemas/RoleManageRequest' },
+							},
+						},
+					},
+					responses: {
+						200: {
+							description: 'Role add result',
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/RoleResponse' },
+								},
+							},
+						},
+						400: { description: 'Missing userId or roleName' },
+						500: { description: 'Internal server error' },
+					},
+				},
+				delete: {
+					tags: ['memberManagement'],
+					summary: 'Remove role from user',
+					requestBody: {
+						required: true,
+						content: {
+							'application/json': {
+								schema: { $ref: '#/components/schemas/RoleManageRequest' },
+							},
+						},
+					},
+					responses: {
+						200: {
+							description: 'Role remove result',
+							content: {
+								'application/json': {
+									schema: { $ref: '#/components/schemas/RoleResponse' },
+								},
+							},
+						},
+						400: { description: 'Missing userId or roleName' },
+						500: { description: 'Internal server error' },
+					},
+				},
+			},
+		},
+	},
 };
 
 async function manageRole(

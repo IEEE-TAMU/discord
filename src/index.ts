@@ -3,6 +3,7 @@ import type { DiscordModule } from './modules';
 import * as modules from './modules';
 import express from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
 
 const DISCORD_TOKEN =
 	process.env.DISCORD_TOKEN ||
@@ -42,6 +43,8 @@ client.once(Events.ClientReady, (readyClient) => {
 		console.log(`API server running on port ${PORT}`);
 	});
 
+	const enabledModules = new Map<string, boolean>();
+
 	for (const mod of moduleList) {
 		const status = mod.start(client, app);
 		if (status.enabled) {
@@ -50,7 +53,38 @@ client.once(Events.ClientReady, (readyClient) => {
 		else {
 			console.log(`${mod.name}: disabled (missing: ${status.missingRequirements?.join(', ') || 'unknown'})`);
 		}
+		enabledModules.set(mod.name, status.enabled);
 	}
+
+	const spec: {
+		openapi: string;
+		info: { title: string; version: string; description: string };
+		paths: Record<string, unknown>;
+		components: { schemas: Record<string, unknown> };
+	} = {
+		openapi: '3.0.3',
+		info: {
+			title: 'IEEE TAMU Discord Bot API',
+			version: process.env.npm_package_version || '0.0.0',
+			description: 'Self-documenting API for the IEEE TAMU Discord bot. Only endpoints from enabled modules are listed.',
+		},
+		paths: {},
+		components: { schemas: {} },
+	};
+
+	for (const mod of moduleList) {
+		if (!enabledModules.get(mod.name) || !mod.openapi) continue;
+		Object.assign(spec.paths, mod.openapi.paths);
+		if (mod.openapi.components?.schemas) {
+			Object.assign(spec.components.schemas, mod.openapi.components.schemas);
+		}
+	}
+
+	app.get('/openapi.json', (_req, res) => {
+		res.json(spec);
+	});
+	app.use('/docs', swaggerUi.serve, swaggerUi.setup(spec));
+	console.log('API docs available at /docs (spec: /openapi.json)');
 
 	process.on('SIGTERM', () => {
 		console.log('Received SIGTERM, shutting down gracefully');
