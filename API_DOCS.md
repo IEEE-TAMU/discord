@@ -115,6 +115,31 @@ or
 { "success": false, "message": "Calendar sync not configured. Set CALENDAR_ICS_URL and GUILD_ID." }
 ```
 
+### Send a Notification (POST)
+```
+POST /notify
+```
+Posts a message to a channel resolved from a logical route. Routes are configured with the `NOTIFY_ROUTES` environment variable as a comma-separated list of `alias:channelId` pairs. A `default` alias is used as a fallback when the requested source is not mapped.
+
+This endpoint is disabled when `NOTIFY_ROUTES` is empty.
+
+**Request Body:**
+- `source` (optional): a route alias, e.g. `portal-alerts`.
+- `channel` (optional): a route alias or a raw channel ID. Takes precedence over `source`.
+- `content` (optional): message text, max 2000 characters.
+- `embeds` (optional): array of Discord embed objects.
+
+At least one of `content` or `embeds` is required.
+
+**Response:**
+```json
+{
+  "success": true,
+  "channelId": "123456789012345678",
+  "messageId": "987654321098765432"
+}
+```
+
 ## Error Responses
 
 All endpoints return error responses in this format:
@@ -147,4 +172,9 @@ curl -X DELETE http://localhost:3000/roles/manage \
 
 # Trigger a calendar sync
 curl -X POST http://localhost:3000/calendar/sync
+
+# Send a notification to the route named "portal-alerts"
+curl -X POST http://localhost:3000/notify \
+  -H "Content-Type: application/json" \
+  -d '{"source": "portal-alerts", "content": "Event still open after 8h"}'
 ```
