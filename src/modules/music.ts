@@ -13,7 +13,16 @@ import { DiscordModule } from './index';
 
 const MODULE_NAME = 'music';
 const DEFAULT_COOLDOWN_SECONDS = 5;
-const COMMAND_NAMES = new Set(['play', 'pause', 'resume', 'skip', 'stop', 'np']);
+const COMMAND_NAMES = new Set([
+	'play',
+	'pause',
+	'resume',
+	'skip',
+	'stop',
+	'volume',
+	'mute',
+	'np',
+]);
 
 const commandBuilders = [
 	new SlashCommandBuilder()
@@ -38,6 +47,20 @@ const commandBuilders = [
 		.setName('stop')
 		.setDescription('Stop playback and clear the queue'),
 	new SlashCommandBuilder()
+		.setName('volume')
+		.setDescription('Set the lounge player volume')
+		.addIntegerOption((option) =>
+			option
+				.setName('level')
+				.setDescription('Volume from 0 to 100')
+				.setRequired(true)
+				.setMinValue(0)
+				.setMaxValue(100),
+		),
+	new SlashCommandBuilder()
+		.setName('mute')
+		.setDescription('Toggle mute on the lounge player'),
+	new SlashCommandBuilder()
 		.setName('np')
 		.setDescription('Show what is playing on the lounge speakers'),
 ];
@@ -54,6 +77,7 @@ type AgentStatus = {
 	playing?: boolean;
 	title?: string | null;
 	volume?: number | null;
+	mute?: boolean;
 	position?: number | null;
 	duration?: number | null;
 	queuePosition?: number | null;
@@ -148,6 +172,9 @@ function buildNowPlaying(
 	) {
 		lines.push(`Progress: ${formatTime(status.position)} / ${formatTime(status.duration)}`);
 	}
+	if (typeof status.volume === 'number') {
+		lines.push(`Volume: ${status.volume}%${status.mute ? ' (muted)' : ''}`);
+	}
 
 	embed.addFields(
 		{ name: 'Track', value: (status.title?.trim() || 'Unknown track').slice(0, 1024) },
@@ -228,6 +255,18 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 			await callAgent<AgentStatus>('/stop', { method: 'POST' }),
 			'Stopped and cleared the queue',
 		);
+	case 'volume': {
+		const level = interaction.options.getInteger('level', true);
+		const result = await callAgent<AgentStatus>('/volume', {
+			method: 'POST',
+			body: JSON.stringify({ volume: level }),
+		});
+		return buildNowPlaying(result, `Volume set to ${result.volume ?? level}%`);
+	}
+	case 'mute': {
+		const result = await callAgent<AgentStatus>('/mute', { method: 'POST' });
+		return buildNowPlaying(result, result.mute ? 'Muted' : 'Unmuted');
+	}
 	case 'np':
 		return buildNowPlaying(await callAgent<AgentStatus>('/status'));
 	default:

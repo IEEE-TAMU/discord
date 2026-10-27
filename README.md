@@ -39,6 +39,8 @@ Slash commands (guild-scoped, registered on startup):
 
 - `/play <link or search>` — queue a YouTube/SoundCloud/Bandcamp link or search text
 - `/pause`, `/resume`, `/skip`, `/stop`, `/np`
+- `/volume <0-100>` — set software volume
+- `/mute` — toggle mute
 
 Environment:
 
