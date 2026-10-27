@@ -15,4 +15,5 @@ export type DiscordModule = {
 export * from './calendarSync';
 export * from './health';
 export * from './memberManagement';
+export * from './music';
 export * from './notify';

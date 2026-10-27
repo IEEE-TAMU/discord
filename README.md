@@ -30,3 +30,24 @@ Notes:
 - Events are created as External Guild Scheduled Events with the location set from the calendar’s `LOCATION`.
 - Correlation uses only an hidden `icsId:<UID>` marker in the Discord event description (for recurring events: `icsId:<UID>::<occurrenceStartISO>`). No files are written to disk.
 - Only future events are synced (past-start events are ignored).
+
+## Lounge music
+
+The bot can control the speakers in the officer lounge through the `lounge-music` player on `ieee-tamu-5B`.
+
+Slash commands (guild-scoped, registered on startup):
+
+- `/play <link or search>` — queue a YouTube/SoundCloud/Bandcamp link or search text
+- `/pause`, `/resume`, `/skip`, `/stop`, `/np`
+
+Environment:
+
+- `MUSIC_AGENT_URL` — base URL of the player API (required, e.g. `http://192.168.1.10:8787`)
+- `MUSIC_AGENT_TOKEN` — optional bearer token, matching the player's `tokenFile`
+- `MUSIC_ALLOWED_ROLE_IDS` — comma-separated officer role IDs
+- `MUSIC_ALLOWED_CHANNEL_IDS` — comma-separated channel IDs where commands are allowed
+- `MUSIC_COOLDOWN_SECONDS` — per-user cooldown, default `5`
+
+If `MUSIC_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can control playback. If both role and channel allowlists are empty, the commands are still restricted to **Manage Server**.
+
+The player outputs at 100%; loudness is controlled by the physical knob on the speakers. Spotify links are rejected for now — see `nix-cluster/README.md` for the player setup.
