@@ -38,7 +38,11 @@ The bot can control the speakers in the officer lounge through the `lounge-music
 Slash commands (guild-scoped, registered on startup):
 
 - `/play <link or search>` — queue a YouTube/SoundCloud/Bandcamp link or search text
-- `/pause`, `/resume`, `/skip`, `/stop`, `/np`
+- `/skip [count]` — skip one or more tracks
+- `/pause`, `/resume`, `/stop`, `/np`
+- `/queue [page]` — show the current track and up to 10 upcoming tracks per page
+- `/remove <position>` — remove an upcoming track by its `/queue` number
+- `/clear` — clear upcoming tracks but keep the current song playing
 - `/volume <0-100>` — set software volume
 - `/mute` — toggle mute
 

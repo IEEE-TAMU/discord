@@ -19,6 +19,9 @@ const COMMAND_NAMES = new Set([
 	'resume',
 	'skip',
 	'stop',
+	'queue',
+	'remove',
+	'clear',
 	'volume',
 	'mute',
 	'np',
@@ -42,10 +45,41 @@ const commandBuilders = [
 		.setDescription('Resume lounge playback'),
 	new SlashCommandBuilder()
 		.setName('skip')
-		.setDescription('Skip the current track'),
+		.setDescription('Skip the current track or multiple tracks')
+		.addIntegerOption((option) =>
+			option
+				.setName('count')
+				.setDescription('Number of tracks to skip (default 1)')
+				.setMinValue(1)
+				.setMaxValue(25)
+				.setRequired(false),
+		),
 	new SlashCommandBuilder()
 		.setName('stop')
 		.setDescription('Stop playback and clear the queue'),
+	new SlashCommandBuilder()
+		.setName('queue')
+		.setDescription('Show the upcoming lounge queue')
+		.addIntegerOption((option) =>
+			option
+				.setName('page')
+				.setDescription('Page number (10 tracks per page)')
+				.setMinValue(1)
+				.setRequired(false),
+		),
+	new SlashCommandBuilder()
+		.setName('remove')
+		.setDescription('Remove an upcoming track from the queue')
+		.addIntegerOption((option) =>
+			option
+				.setName('position')
+				.setDescription('Upcoming track number from /queue')
+				.setMinValue(1)
+				.setRequired(true),
+		),
+	new SlashCommandBuilder()
+		.setName('clear')
+		.setDescription('Clear upcoming tracks but keep the current song'),
 	new SlashCommandBuilder()
 		.setName('volume')
 		.setDescription('Set the lounge player volume')
@@ -66,6 +100,7 @@ const commandBuilders = [
 ];
 
 type QueueEntry = {
+	id?: number | null;
 	title?: string | null;
 	current?: boolean;
 };
@@ -84,6 +119,9 @@ type AgentStatus = {
 	queueCount?: number;
 	queue?: QueueEntry[];
 	queued?: string;
+	skipped?: number;
+	removedTitle?: string | null;
+	removedCount?: number;
 };
 
 let agentUrl: string;
@@ -158,12 +196,16 @@ function buildNowPlaying(
 
 	const lines = [status.paused ? 'Paused' : 'Playing'];
 	const position = status.queuePosition;
-	if (
-		typeof status.queueCount === 'number'
-		&& typeof position === 'number'
-		&& position >= 0
-	) {
-		lines.push(`Queue position: ${position + 1}/${status.queueCount}`);
+	if (typeof status.queueCount === 'number') {
+		const upcoming = Math.max(
+			0,
+			status.queueCount - (typeof position === 'number' && position >= 0 ? 1 : 0),
+		);
+		lines.push(
+			upcoming > 0
+				? `${upcoming} track${upcoming === 1 ? '' : 's'} queued`
+				: 'No tracks queued',
+		);
 	}
 	if (
 		typeof status.position === 'number'
@@ -180,6 +222,75 @@ function buildNowPlaying(
 		{ name: 'Track', value: (status.title?.trim() || 'Unknown track').slice(0, 1024) },
 		{ name: 'Status', value: lines.join('\n') },
 	);
+
+	return embed;
+}
+
+const QUEUE_PAGE_SIZE = 10;
+
+function getUpcomingQueue(status: AgentStatus): QueueEntry[] {
+	const queue = status.queue ?? [];
+	const position = status.queuePosition;
+	if (typeof position !== 'number' || position < 0) {
+		return [];
+	}
+	return queue.slice(position + 1);
+}
+
+function getQueueEntry(status: AgentStatus, position: number): QueueEntry {
+	const entry = getUpcomingQueue(status)[position - 1];
+	if (!entry) {
+		throw new Error(`There is no queued track at position ${position}.`);
+	}
+	return entry;
+}
+
+function buildQueue(status: AgentStatus, page: number): EmbedBuilder {
+	const embed = new EmbedBuilder().setColor(0x1f8b4c).setTitle('Lounge queue');
+
+	if (status.idle || !status.queue?.length) {
+		embed.setDescription('Nothing is playing. Use `/play` to add something.');
+		return embed;
+	}
+
+	const position = status.queuePosition;
+	const current = typeof position === 'number' && position >= 0
+		? status.queue[position]
+		: undefined;
+	const upcoming = getUpcomingQueue(status);
+	const lines: string[] = [];
+
+	if (current?.title) {
+		const progress = (
+			typeof status.position === 'number'
+			&& typeof status.duration === 'number'
+			&& status.duration > 0
+		)
+			? ` (${formatTime(status.position)} / ${formatTime(status.duration)})`
+			: '';
+		lines.push(`**Now playing:** ${current.title}${progress}`);
+	}
+
+	if (upcoming.length === 0) {
+		lines.push('', 'Nothing else queued.');
+		embed.setDescription(lines.join('\n').slice(0, 4096));
+		return embed;
+	}
+
+	const totalPages = Math.max(1, Math.ceil(upcoming.length / QUEUE_PAGE_SIZE));
+	const currentPage = Math.min(Math.max(1, page), totalPages);
+	const start = (currentPage - 1) * QUEUE_PAGE_SIZE;
+	const entries = upcoming.slice(start, start + QUEUE_PAGE_SIZE);
+
+	lines.push('', '**Up next:**');
+	entries.forEach((entry, index) => {
+		lines.push(`${start + index + 1}. ${entry.title?.trim() || 'Unknown track'}`);
+	});
+
+	embed.setDescription(lines.join('\n').slice(0, 4096));
+	embed.setFooter({
+		text: `Page ${currentPage}/${totalPages} • ${upcoming.length} upcoming`,
+	});
 
 	return embed;
 }
@@ -245,16 +356,53 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 			await callAgent<AgentStatus>('/resume', { method: 'POST' }),
 			'Resumed',
 		);
-	case 'skip':
+	case 'skip': {
+		const count = interaction.options.getInteger('count') ?? 1;
+		const result = await callAgent<AgentStatus>('/skip', {
+			method: 'POST',
+			body: JSON.stringify({ count }),
+		});
+		const skipped = result.skipped ?? count;
 		return buildNowPlaying(
-			await callAgent<AgentStatus>('/skip', { method: 'POST' }),
-			'Skipped',
+			result,
+			`Skipped ${skipped} track${skipped === 1 ? '' : 's'}`,
 		);
+	}
 	case 'stop':
 		return buildNowPlaying(
 			await callAgent<AgentStatus>('/stop', { method: 'POST' }),
 			'Stopped and cleared the queue',
 		);
+	case 'queue': {
+		const page = interaction.options.getInteger('page') ?? 1;
+		return buildQueue(await callAgent<AgentStatus>('/status'), page);
+	}
+	case 'remove': {
+		const position = interaction.options.getInteger('position', true);
+		const current = await callAgent<AgentStatus>('/status');
+		const entry = getQueueEntry(current, position);
+		if (typeof entry.id !== 'number') {
+			throw new Error('That track cannot be removed yet; try again in a moment.');
+		}
+		const result = await callAgent<AgentStatus>('/remove', {
+			method: 'POST',
+			body: JSON.stringify({ id: entry.id }),
+		});
+		return buildNowPlaying(
+			result,
+			`Removed **${result.removedTitle ?? entry.title ?? 'track'}**`,
+		);
+	}
+	case 'clear': {
+		const result = await callAgent<AgentStatus>('/clear', { method: 'POST' });
+		const removed = result.removedCount ?? 0;
+		return buildNowPlaying(
+			result,
+			removed > 0
+				? `Cleared ${removed} upcoming track${removed === 1 ? '' : 's'}`
+				: 'No upcoming tracks to clear',
+		);
+	}
 	case 'volume': {
 		const level = interaction.options.getInteger('level', true);
 		const result = await callAgent<AgentStatus>('/volume', {
@@ -350,7 +498,7 @@ export const musicModule: DiscordModule = {
 				console.error(`${MODULE_NAME}: ${interaction.commandName} failed:`, error);
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				await interaction.editReply({
-					content: `Could not reach the lounge player: ${message}`,
+					content: `Could not complete that request: ${message}`,
 				});
 			}
 		};
