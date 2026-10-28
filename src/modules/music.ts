@@ -21,12 +21,12 @@ const COMMAND_NAMES = new Set([
 	'stop',
 	'queue',
 	'remove',
+	'move',  
 	'clear',
 	'volume',
 	'mute',
 	'np',
 ]);
-
 const commandBuilders = [
 	new SlashCommandBuilder()
 		.setName('play')
@@ -97,6 +97,23 @@ const commandBuilders = [
 	new SlashCommandBuilder()
 		.setName('np')
 		.setDescription('Show what is playing on the lounge speakers'),
+	new SlashCommandBuilder()
+	.setName('move')
+	.setDescription('Move an upcoming track to a new position in the queue')
+	.addIntegerOption((option) =>
+		option
+			.setName('from')
+			.setDescription('Upcoming track number from /queue')
+			.setMinValue(1)
+			.setRequired(true),
+	)
+	.addIntegerOption((option) =>
+		option
+			.setName('to')
+			.setDescription('New position in the upcoming queue (1 = plays next)')
+			.setMinValue(1)
+			.setRequired(true),
+	),
 ];
 
 type QueueEntry = {
@@ -122,6 +139,7 @@ type AgentStatus = {
 	skipped?: number;
 	removedTitle?: string | null;
 	removedCount?: number;
+	movedTitle?: string | null;   
 };
 
 let agentUrl: string;
@@ -391,6 +409,32 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 		return buildNowPlaying(
 			result,
 			`Removed **${result.removedTitle ?? entry.title ?? 'track'}**`,
+		);
+	}
+	case 'move': { //10/28 Move Function Addition
+		const from = interaction.options.getInteger('from', true);
+		const to = interaction.options.getInteger('to', true);
+		const current = await callAgent<AgentStatus>('/status');
+		const upcomingCount = getUpcomingQueue(current).length;
+		const entry = getQueueEntry(current, from);
+	
+		if (to > upcomingCount) {
+			throw new Error(`There are only ${upcomingCount} upcoming track${upcomingCount === 1 ? '' : 's'}.`);
+		}
+		if (from === to) {
+			throw new Error(`That track is already at position ${to}.`);
+		}
+		if (typeof entry.id !== 'number') {
+			throw new Error('That track cannot be moved yet; try again in a moment.');
+		}
+	
+		const result = await callAgent<AgentStatus>('/move', {
+			method: 'POST',
+			body: JSON.stringify({ id: entry.id, position: to }),
+		});
+		return buildNowPlaying(
+			result,
+			`Moved **${result.movedTitle ?? entry.title ?? 'track'}** from #${from} to #${to}`,
 		);
 	}
 	case 'clear': {
