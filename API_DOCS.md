@@ -178,3 +178,7 @@ curl -X POST http://localhost:3000/notify \
   -H "Content-Type: application/json" \
   -d '{"source": "portal-alerts", "content": "Event still open after 8h"}'
 ```
+
+## Printer control API
+
+Printing is exposed through Discord slash commands (`/print`, `/print-status`, `/print-cancel`). The bot talks to a separate print-agent HTTP API on the print host; it is not part of the bot's own port-3000 API. See `nix-cluster/README.md` for the agent endpoints and configuration.

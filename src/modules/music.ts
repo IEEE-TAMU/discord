@@ -424,6 +424,7 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 
 export const musicModule: DiscordModule = {
 	name: MODULE_NAME,
+	commands: commandBuilders.map((command) => command.toJSON()),
 	start(client: Client) {
 		const url = process.env.MUSIC_AGENT_URL;
 		if (!url) {
@@ -443,25 +444,6 @@ export const musicModule: DiscordModule = {
 		cooldownSeconds = Number.isFinite(configuredCooldown) && configuredCooldown >= 0
 			? configuredCooldown
 			: DEFAULT_COOLDOWN_SECONDS;
-
-		const commands = commandBuilders.map((command) => command.toJSON());
-
-		const registerCommands = async () => {
-			try {
-				if (guildId) {
-					const guild = await client.guilds.fetch(guildId);
-					await guild.commands.set(commands);
-				}
-				else {
-					await client.application?.commands.set(commands);
-				}
-				console.log(`${MODULE_NAME}: slash commands registered`);
-			}
-			catch (error) {
-				console.error(`${MODULE_NAME}: failed to register slash commands:`, error);
-			}
-		};
-		void registerCommands();
 
 		const onInteraction = async (interaction: Interaction) => {
 			if (!interaction.isChatInputCommand()) {

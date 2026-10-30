@@ -57,3 +57,24 @@ Environment:
 If `MUSIC_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can control playback. If both role and channel allowlists are empty, the commands are still restricted to **Manage Server**.
 
 The player outputs at 100%; loudness is controlled by the physical knob on the speakers. Spotify links are rejected for now — see `nix-cluster/README.md` for the player setup.
+
+## Printing
+
+The bot can print to the Brother MFC-7360N in the officer lounge through the print host on `ieee-tamu-5B`.
+
+Slash commands (guild-scoped, registered on startup):
+
+- `/print <file> [copies] [pages]` — print a PDF, PNG, JPEG, or plain-text attachment
+- `/print-status` — show printer state and queued jobs
+- `/print-cancel <job>` — cancel a queued job
+
+Environment:
+
+- `PRINT_AGENT_URL` — base URL of the print control API (required, e.g. `http://192.168.1.10:8788`)
+- `PRINT_AGENT_TOKEN` — optional bearer token, matching the print agent's `tokenFile`
+- `PRINT_ALLOWED_ROLE_IDS` — comma-separated officer role IDs
+- `PRINT_ALLOWED_CHANNEL_IDS` — comma-separated channel IDs where commands are allowed
+- `PRINT_COOLDOWN_SECONDS` — per-user cooldown, default `5`
+- `PRINT_MAX_FILE_MB` — upload limit, default `10`
+
+If `PRINT_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can print. Replies are ephemeral because print jobs may contain sensitive documents. See `nix-cluster/README.md` for the CUPS/print-agent setup.

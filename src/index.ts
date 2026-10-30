@@ -29,7 +29,7 @@ if (duplicates.length > 0) {
 	throw new Error(`Duplicate module names found: ${duplicates.join(', ')}`);
 }
 
-client.once(Events.ClientReady, (readyClient) => {
+client.once(Events.ClientReady, async (readyClient) => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
 
 	const app = express();
@@ -42,13 +42,33 @@ client.once(Events.ClientReady, (readyClient) => {
 		console.log(`API server running on port ${PORT}`);
 	});
 
+	const enabledModules: DiscordModule[] = [];
 	for (const mod of moduleList) {
 		const status = mod.start(client, app);
 		if (status.enabled) {
+			enabledModules.push(mod);
 			console.log(`${mod.name}: enabled`);
 		}
 		else {
 			console.log(`${mod.name}: disabled (missing: ${status.missingRequirements?.join(', ') || 'unknown'})`);
+		}
+	}
+
+	const commands = enabledModules.flatMap((mod) => mod.commands ?? []);
+	if (commands.length > 0) {
+		try {
+			const guildId = process.env.GUILD_ID;
+			if (guildId) {
+				const guild = await client.guilds.fetch(guildId);
+				await guild.commands.set(commands);
+			}
+			else {
+				await client.application?.commands.set(commands);
+			}
+			console.log(`slash commands registered (${commands.length})`);
+		}
+		catch (error) {
+			console.error('failed to register slash commands:', error);
 		}
 	}
 
