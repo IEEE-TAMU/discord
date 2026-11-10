@@ -42,6 +42,7 @@ Slash commands (guild-scoped, registered on startup):
 - `/pause`, `/resume`, `/stop`, `/np`
 - `/queue [page]` — show the current track and up to 10 upcoming tracks per page
 - `/remove <position>` — remove an upcoming track by its `/queue` number
+- `/move <from> <to>` — move an upcoming track to a new position in the queue
 - `/clear` — clear upcoming tracks but keep the current song playing
 - `/volume <0-100>` — set software volume
 - `/mute` — toggle mute
