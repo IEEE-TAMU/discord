@@ -35,7 +35,7 @@ const commandBuilders = [
 		.addStringOption((option) =>
 			option
 				.setName('input')
-				.setDescription('YouTube/SoundCloud/Bandcamp/Spotify link, or text to search for')
+				.setDescription('YouTube/SoundCloud/Bandcamp link, or text to search for')
 				.setRequired(true),
 		),
 	new SlashCommandBuilder()
@@ -120,8 +120,6 @@ const commandBuilders = [
 type QueueEntry = {
 	id?: number | null;
 	title?: string | null;
-	artist?: string | null;
-	album?: string | null;
 	current?: boolean;
 };
 
@@ -131,8 +129,6 @@ type AgentStatus = {
 	paused?: boolean;
 	playing?: boolean;
 	title?: string | null;
-	artist?: string | null;
-	album?: string | null;
 	volume?: number | null;
 	mute?: boolean;
 	position?: number | null;
@@ -140,16 +136,6 @@ type AgentStatus = {
 	queuePosition?: number | null;
 	queueCount?: number;
 	queue?: QueueEntry[];
-	source?: 'mpv' | 'spotify';
-	spotify?: {
-		configured?: boolean;
-		linked?: boolean;
-		accountName?: string | null;
-		product?: string | null;
-		deviceName?: string | null;
-		deviceOnline?: boolean;
-		error?: string | null;
-	};
 	queued?: string;
 	skipped?: number;
 	removedTitle?: string | null;
@@ -190,7 +176,7 @@ async function callAgent<T>(path: string, init?: RequestInit): Promise<T> {
 			...headers,
 			...(init?.headers as Record<string, string> | undefined),
 		},
-		signal: AbortSignal.timeout(15_000),
+		signal: AbortSignal.timeout(10_000),
 	});
 	const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
 
@@ -206,15 +192,6 @@ function formatTime(seconds: number): string {
 	const minutes = Math.floor(total / 60);
 	const remainder = total % 60;
 	return `${minutes}:${remainder.toString().padStart(2, '0')}`;
-}
-
-function trackLabel(entry?: {
-	title?: string | null;
-	artist?: string | null;
-}): string {
-	const title = entry?.title?.trim() || 'Unknown track';
-	const artist = entry?.artist?.trim();
-	return artist ? `${title} — ${artist}` : title;
 }
 
 function buildNowPlaying(
@@ -237,9 +214,6 @@ function buildNowPlaying(
 	}
 
 	const lines = [status.paused ? 'Paused' : 'Playing'];
-	if (status.source === 'spotify') {
-		lines.push('Source: Spotify');
-	}
 	const position = status.queuePosition;
 	if (typeof status.queueCount === 'number') {
 		const upcoming = Math.max(
@@ -264,7 +238,7 @@ function buildNowPlaying(
 	}
 
 	embed.addFields(
-		{ name: 'Track', value: trackLabel(status).slice(0, 1024) },
+		{ name: 'Track', value: (status.title?.trim() || 'Unknown track').slice(0, 1024) },
 		{ name: 'Status', value: lines.join('\n') },
 	);
 
@@ -291,10 +265,7 @@ function getQueueEntry(status: AgentStatus, position: number): QueueEntry {
 }
 
 function buildQueue(status: AgentStatus, page: number): EmbedBuilder {
-	const spotify = status.source === 'spotify';
-	const embed = new EmbedBuilder()
-		.setColor(0x1f8b4c)
-		.setTitle(spotify ? 'Lounge queue (Spotify)' : 'Lounge queue');
+	const embed = new EmbedBuilder().setColor(0x1f8b4c).setTitle('Lounge queue');
 
 	if (status.idle || !status.queue?.length) {
 		embed.setDescription('Nothing is playing. Use `/play` to add something.');
@@ -308,7 +279,7 @@ function buildQueue(status: AgentStatus, page: number): EmbedBuilder {
 	const upcoming = getUpcomingQueue(status);
 	const lines: string[] = [];
 
-	if (current) {
+	if (current?.title) {
 		const progress = (
 			typeof status.position === 'number'
 			&& typeof status.duration === 'number'
@@ -316,14 +287,11 @@ function buildQueue(status: AgentStatus, page: number): EmbedBuilder {
 		)
 			? ` (${formatTime(status.position)} / ${formatTime(status.duration)})`
 			: '';
-		lines.push(`**Now playing:** ${trackLabel(current)}${progress}`);
+		lines.push(`**Now playing:** ${current.title}${progress}`);
 	}
 
 	if (upcoming.length === 0) {
 		lines.push('', 'Nothing else queued.');
-		if (spotify) {
-			lines.push('', 'Spotify manages this queue in the Spotify app.');
-		}
 		embed.setDescription(lines.join('\n').slice(0, 4096));
 		return embed;
 	}
@@ -335,11 +303,8 @@ function buildQueue(status: AgentStatus, page: number): EmbedBuilder {
 
 	lines.push('', '**Up next:**');
 	entries.forEach((entry, index) => {
-		lines.push(`${start + index + 1}. ${trackLabel(entry)}`);
+		lines.push(`${start + index + 1}. ${entry.title?.trim() || 'Unknown track'}`);
 	});
-	if (spotify) {
-		lines.push('', 'Spotify manages this queue in the Spotify app.');
-	}
 
 	embed.setDescription(lines.join('\n').slice(0, 4096));
 	embed.setFooter({
@@ -422,15 +387,11 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 			`Skipped ${skipped} track${skipped === 1 ? '' : 's'}`,
 		);
 	}
-	case 'stop': {
-		const result = await callAgent<AgentStatus>('/stop', { method: 'POST' });
+	case 'stop':
 		return buildNowPlaying(
-			result,
-			result.source === 'spotify'
-				? 'Paused Spotify (its queue is managed in the Spotify app)'
-				: 'Stopped and cleared the queue',
+			await callAgent<AgentStatus>('/stop', { method: 'POST' }),
+			'Stopped and cleared the queue',
 		);
-	}
 	case 'queue': {
 		const page = interaction.options.getInteger('page') ?? 1;
 		return buildQueue(await callAgent<AgentStatus>('/status'), page);
@@ -438,9 +399,6 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 	case 'remove': {
 		const position = interaction.options.getInteger('position', true);
 		const current = await callAgent<AgentStatus>('/status');
-		if (current.source === 'spotify') {
-			throw new Error('Spotify manages its own queue; remove the track in the Spotify app.');
-		}
 		const entry = getQueueEntry(current, position);
 		if (typeof entry.id !== 'number') {
 			throw new Error('That track cannot be removed yet; try again in a moment.');
@@ -451,16 +409,13 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 		});
 		return buildNowPlaying(
 			result,
-			`Removed **${result.removedTitle ?? trackLabel(entry)}**`,
+			`Removed **${result.removedTitle ?? entry.title ?? 'track'}**`,
 		);
 	}
 	case 'move': {
 		const from = interaction.options.getInteger('from', true);
 		const to = interaction.options.getInteger('to', true);
 		const current = await callAgent<AgentStatus>('/status');
-		if (current.source === 'spotify') {
-			throw new Error('Spotify manages its own queue; reorder the track in the Spotify app.');
-		}
 		const upcomingCount = getUpcomingQueue(current).length;
 		const entry = getQueueEntry(current, from);
 
@@ -480,14 +435,10 @@ async function runCommand(interaction: ChatInputCommandInteraction): Promise<Emb
 		});
 		return buildNowPlaying(
 			result,
-			`Moved **${result.movedTitle ?? trackLabel(entry)}** from #${from} to #${to}`,
+			`Moved **${result.movedTitle ?? entry.title ?? 'track'}** from #${from} to #${to}`,
 		);
 	}
 	case 'clear': {
-		const current = await callAgent<AgentStatus>('/status');
-		if (current.source === 'spotify') {
-			throw new Error('Spotify manages its own queue; clear it in the Spotify app.');
-		}
 		const result = await callAgent<AgentStatus>('/clear', { method: 'POST' });
 		const removed = result.removedCount ?? 0;
 		return buildNowPlaying(
