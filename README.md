@@ -37,7 +37,7 @@ The bot can control the speakers in the officer lounge through the `lounge-music
 
 Slash commands (guild-scoped, registered on startup):
 
-- `/play <link or search>` — queue a YouTube/SoundCloud/Bandcamp link or search text
+- `/play <link or search>` — queue a YouTube/SoundCloud/Bandcamp/Spotify link or search text
 - `/skip [count]` — skip one or more tracks
 - `/pause`, `/resume`, `/stop`, `/np`
 - `/queue [page]` — show the current track and up to 10 upcoming tracks per page
@@ -57,7 +57,7 @@ Environment:
 
 If `MUSIC_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can control playback. If both role and channel allowlists are empty, the commands are still restricted to **Manage Server**.
 
-The player outputs at 100%; loudness is controlled by the physical knob on the speakers. Spotify links are rejected for now — see `nix-cluster/README.md` for the player setup.
+The player outputs at 100%; loudness is controlled by the physical knob on the speakers. Spotify tracks, albums, and playlists work when an officer has connected the lounge's Spotify Premium account from the lounge web app. Spotify manages its own queue: `/remove`, `/move`, and `/clear` are rejected while Spotify is playing, and `/stop` pauses Spotify without clearing its queue. See `nix-cluster/README.md` for the player setup.
 
 ## Printing
 
