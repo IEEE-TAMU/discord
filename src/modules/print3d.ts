@@ -16,6 +16,9 @@ import { DiscordModule } from './index';
 const MODULE_NAME = 'print3d';
 const DEFAULT_COOLDOWN_SECONDS = 10;
 const DEFAULT_MAX_FILE_MB = 25;
+const DEFAULT_NOTIFY_POLL_SECONDS = 20;
+const ACTIVE_PRINT_STATES = new Set(['PREPARE', 'RUNNING', 'PAUSE', 'SLICING']);
+const TERMINAL_PRINT_STATES = new Set(['FINISH', 'FAILED']);
 const COMMAND_NAMES = new Set([
 	'3dprint',
 	'3dprint-status',
@@ -233,6 +236,16 @@ let maxFileBytes = DEFAULT_MAX_FILE_MB * 1024 * 1024;
 
 const lastCommandAt = new Map<string, number>();
 
+let notifyChannelId: string | undefined;
+let notifyPollSeconds = DEFAULT_NOTIFY_POLL_SECONDS;
+let notifyInitialized = false;
+let notifyPolling = false;
+let lastNotifyState: string | null = null;
+let lastJobKey = '';
+let lastNotifiedJobKey: string | null = null;
+let printStartedAt: number | null = null;
+let lastActiveSlot: Slot | null = null;
+
 function parseIdSet(raw: string | undefined): Set<string> {
 	return new Set(
 		(raw ?? '')
@@ -330,6 +343,203 @@ function formatMinutes(minutes?: number | null): string {
 	const hours = Math.floor(minutes / 60);
 	const remainder = minutes % 60;
 	return hours > 0 ? `${hours}h ${remainder}m` : `${remainder}m`;
+}
+
+function formatDuration(milliseconds: number): string {
+	const minutes = Math.max(1, Math.round(milliseconds / 60_000));
+	const hours = Math.floor(minutes / 60);
+	const remainder = minutes % 60;
+	return hours > 0 ? `${hours}h ${remainder}m` : `${remainder}m`;
+}
+
+function buildFinishedEmbed(
+	status: PrinterStatus,
+	failed: boolean,
+	startedAt: number | null,
+	activeSlot: Slot | null,
+): EmbedBuilder {
+	const printer = status.printer;
+	const jobName = printer.subtask ?? 'Unknown job';
+	const embed = new EmbedBuilder()
+		.setColor(failed ? 0xe74c3c : 0x2ecc71)
+		.setTitle(
+			failed
+				? `❌ Print failed: ${jobName}`
+				: `✅ Print finished: ${jobName}`,
+		);
+
+	const lines = [
+		`File: **${printer.gcodeFile ?? 'unknown'}**`,
+		`Result: **${printer.stateLabel ?? printer.state ?? 'Unknown'}**`,
+		`Progress: ${typeof printer.progress === 'number' ? `${printer.progress}%` : '—'}`,
+	];
+	if (typeof printer.layer === 'number' && typeof printer.totalLayers === 'number') {
+		lines.push(`Layers: ${printer.layer}/${printer.totalLayers}`);
+	}
+	if (startedAt) {
+		lines.push(`Elapsed: ~${formatDuration(Date.now() - startedAt)}`);
+	}
+	embed.setDescription(lines.join('\n').slice(0, 4096));
+
+	const bed = status.temperatures?.bed;
+	const chamber = status.temperatures?.chamber;
+	const tempLines = [`Bed: ${formatTemp(bed?.current, bed?.target)}`];
+	for (const nozzle of status.temperatures?.nozzles ?? []) {
+		const details = [
+			nozzle.type,
+			typeof nozzle.diameter === 'number' ? `${nozzle.diameter} mm` : null,
+		].filter(Boolean).join(', ');
+		tempLines.push(
+			`Nozzle ${nozzle.index + 1}: ${formatTemp(nozzle.current, nozzle.target)}${details ? ` (${details})` : ''}`,
+		);
+	}
+	if (chamber && typeof chamber.current === 'number') {
+		tempLines.push(`Chamber: ${formatTemp(chamber.current, chamber.target)}`);
+	}
+	embed.addFields({ name: 'Temperatures', value: tempLines.join('\n').slice(0, 1024) });
+
+	const slot = activeSlot ?? status.ams?.slots?.find((candidate) => candidate.active);
+	if (slot) {
+		embed.addFields({
+			name: 'Filament',
+			value: ansiBlock([
+				`${ansiSwatch(slot.color)} ${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}`,
+			]),
+		});
+	}
+
+	if (failed) {
+		const errors = printer.errors;
+		const errorLines: string[] = [];
+		if (errors?.printError) {
+			errorLines.push(`print_error: ${errors.printError}`);
+		}
+		if (errors?.mcError) {
+			errorLines.push(`mc_err: ${errors.mcError}`);
+		}
+		for (const code of errors?.hms ?? []) {
+			errorLines.push(`HMS ${code.display ?? `${code.attr}_${code.code}`}`);
+		}
+		if (errorLines.length > 0) {
+			embed.addFields({ name: 'Errors', value: errorLines.join('\n').slice(0, 1024) });
+		}
+	}
+
+	embed.setFooter({
+		text: [
+			'Bambu Lab X2D',
+			printer.serial ? `Serial ${printer.serial}` : null,
+		].filter(Boolean).join(' • '),
+	});
+
+	return embed;
+}
+
+async function sendPrintFinished(
+	client: Client,
+	channelId: string,
+	status: PrinterStatus,
+	failed: boolean,
+	startedAt: number | null,
+	activeSlot: Slot | null,
+): Promise<void> {
+	const channel = await client.channels.fetch(channelId);
+	if (!channel || !channel.isTextBased() || !channel.isSendable()) {
+		console.error(`${MODULE_NAME}: notification channel ${channelId} is not sendable`);
+		return;
+	}
+
+	const embed = buildFinishedEmbed(status, failed, startedAt, activeSlot);
+	const files: AttachmentBuilder[] = [];
+	const snapshot = await fetchSnapshot();
+	if (snapshot) {
+		files.push(
+			new AttachmentBuilder(snapshot, {
+				name: 'print.jpg',
+				description: 'X2D camera snapshot after the print',
+			}),
+		);
+		embed.setImage('attachment://print.jpg');
+	}
+	else {
+		embed.addFields({
+			name: 'Camera',
+			value: 'Snapshot unavailable.',
+		});
+	}
+
+	await channel.send({ embeds: [embed], files });
+	console.log(
+		`${MODULE_NAME}: posted ${failed ? 'failure' : 'completion'} notification for ${status.printer.subtask ?? 'unknown job'}`,
+	);
+}
+
+async function pollPrintNotifications(client: Client, channelId: string): Promise<void> {
+	if (notifyPolling) {
+		return;
+	}
+	notifyPolling = true;
+	try {
+		const status = await callAgent<PrinterStatus>('/status', undefined, 15_000);
+		const state = (status.printer.state ?? 'UNKNOWN').toUpperCase();
+		const jobKey = `${status.printer.subtask ?? ''}|${status.printer.gcodeFile ?? ''}`;
+		const active = ACTIVE_PRINT_STATES.has(state);
+		const terminal = TERMINAL_PRINT_STATES.has(state);
+
+		if (!notifyInitialized) {
+			notifyInitialized = true;
+			lastNotifyState = state;
+			lastJobKey = jobKey;
+			if (active) {
+				printStartedAt = Date.now();
+				lastNotifiedJobKey = null;
+			}
+			else if (terminal) {
+				lastNotifiedJobKey = jobKey;
+			}
+			const slot = status.ams?.slots?.find((candidate) => candidate.active);
+			if (slot) {
+				lastActiveSlot = slot;
+			}
+			return;
+		}
+
+		if (active) {
+			if (!ACTIVE_PRINT_STATES.has(lastNotifyState ?? '')) {
+				printStartedAt = Date.now();
+				lastNotifiedJobKey = null;
+			}
+			const slot = status.ams?.slots?.find((candidate) => candidate.active);
+			if (slot) {
+				lastActiveSlot = slot;
+			}
+		}
+
+		if (terminal && lastNotifiedJobKey !== jobKey) {
+			const wasActive = ACTIVE_PRINT_STATES.has(lastNotifyState ?? '');
+			const isNewJob = jobKey !== lastJobKey;
+			if (wasActive || isNewJob) {
+				await sendPrintFinished(
+					client,
+					channelId,
+					status,
+					state === 'FAILED',
+					printStartedAt,
+					lastActiveSlot,
+				);
+				lastNotifiedJobKey = jobKey;
+			}
+		}
+
+		lastNotifyState = state;
+		lastJobKey = jobKey;
+	}
+	catch (error) {
+		console.error(`${MODULE_NAME}: notification poll failed:`, error);
+	}
+	finally {
+		notifyPolling = false;
+	}
 }
 
 function stateColor(state?: string): number {
@@ -881,6 +1091,32 @@ export const print3dModule: DiscordModule = {
 			? Math.floor(configuredMaxMb * 1024 * 1024)
 			: DEFAULT_MAX_FILE_MB * 1024 * 1024;
 
+		notifyChannelId = process.env.BAMBU_NOTIFY_CHANNEL_ID?.trim() || undefined;
+		const configuredPoll = Number(
+			process.env.BAMBU_NOTIFY_POLL_SECONDS ?? DEFAULT_NOTIFY_POLL_SECONDS,
+		);
+		notifyPollSeconds = Number.isFinite(configuredPoll) && configuredPoll >= 5
+			? configuredPoll
+			: DEFAULT_NOTIFY_POLL_SECONDS;
+
+		let notifyTimer: ReturnType<typeof setInterval> | undefined;
+		if (notifyChannelId) {
+			const channelId = notifyChannelId;
+			const poll = () => {
+				void pollPrintNotifications(client, channelId);
+			};
+			notifyTimer = setInterval(poll, notifyPollSeconds * 1000);
+			void poll();
+			console.log(
+				`${MODULE_NAME}: print notifications -> channel ${channelId} every ${notifyPollSeconds}s`,
+			);
+		}
+		else {
+			console.log(
+				`${MODULE_NAME}: print notifications disabled (missing BAMBU_NOTIFY_CHANNEL_ID)`,
+			);
+		}
+
 		const onInteraction = async (interaction: Interaction) => {
 			if (!interaction.isChatInputCommand()) {
 				return;
@@ -927,6 +1163,9 @@ export const print3dModule: DiscordModule = {
 		client.on(Events.InteractionCreate, onInteraction);
 
 		this.stop = () => {
+			if (notifyTimer) {
+				clearInterval(notifyTimer);
+			}
 			client.removeListener(Events.InteractionCreate, onInteraction);
 			lastCommandAt.clear();
 		};

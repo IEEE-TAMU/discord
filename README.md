@@ -98,5 +98,9 @@ Environment:
 - `BAMBU_ALLOWED_CHANNEL_IDS` — comma-separated channel IDs where commands are allowed
 - `BAMBU_COOLDOWN_SECONDS` — per-user cooldown, default `10`
 - `BAMBU_MAX_FILE_MB` — upload limit, default `25`
+- `BAMBU_NOTIFY_CHANNEL_ID` — channel that receives a print-finished/failed embed with a camera snapshot. Leave empty to disable.
+- `BAMBU_NOTIFY_POLL_SECONDS` — how often to check the printer for a completed job, default `20`
 
 If `BAMBU_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can use the 3D printer. The printer must have LAN-only mode and Developer Mode enabled for `/3dprint` to start jobs; status and camera work without Developer Mode. See `nix-cluster/README.md` for the Bambu agent setup.
+
+When a job transitions from an active state (`PREPARE`, `RUNNING`, `PAUSE`, or `SLICING`) to `FINISH` or `FAILED`, the bot posts to `BAMBU_NOTIFY_CHANNEL_ID` with the job name, file, result, progress, temperatures, active filament, and a camera snapshot. It intentionally does not post for a printer that is already finished when the bot starts, so restarts do not spam the channel.
