@@ -350,13 +350,92 @@ function stateColor(state?: string): number {
 	}
 }
 
+type ColorSwatch = {
+	name: string;
+	emoji: string;
+	rgb: [number, number, number];
+};
+
+const COLOR_SWATCHES: ColorSwatch[] = [
+	{ name: 'Red', emoji: '🟥', rgb: [231, 76, 60] },
+	{ name: 'Crimson', emoji: '🟥', rgb: [180, 20, 50] },
+	{ name: 'Orange', emoji: '🟧', rgb: [243, 156, 18] },
+	{ name: 'Gold', emoji: '🟨', rgb: [212, 175, 55] },
+	{ name: 'Yellow', emoji: '🟨', rgb: [241, 196, 15] },
+	{ name: 'Lime', emoji: '🟩', rgb: [120, 220, 40] },
+	{ name: 'Green', emoji: '🟩', rgb: [46, 204, 113] },
+	{ name: 'Dark Green', emoji: '🟩', rgb: [20, 110, 60] },
+	{ name: 'Cyan', emoji: '🟦', rgb: [26, 188, 156] },
+	{ name: 'Teal', emoji: '🟦', rgb: [0, 128, 128] },
+	{ name: 'Blue', emoji: '🟦', rgb: [52, 152, 219] },
+	{ name: 'Navy', emoji: '🟦', rgb: [44, 62, 120] },
+	{ name: 'Purple', emoji: '🟪', rgb: [155, 89, 182] },
+	{ name: 'Violet', emoji: '🟪', rgb: [90, 60, 150] },
+	{ name: 'Indigo', emoji: '🟪', rgb: [75, 0, 130] },
+	{ name: 'Magenta', emoji: '🟪', rgb: [220, 60, 180] },
+	{ name: 'Pink', emoji: '🟪', rgb: [245, 150, 190] },
+	{ name: 'Brown', emoji: '🟫', rgb: [139, 69, 19] },
+	{ name: 'Olive', emoji: '🟫', rgb: [128, 128, 0] },
+	{ name: 'Black', emoji: '⬛', rgb: [20, 20, 20] },
+	{ name: 'Gray', emoji: '⬜', rgb: [128, 128, 128] },
+	{ name: 'Silver', emoji: '⬜', rgb: [192, 192, 192] },
+	{ name: 'White', emoji: '⬜', rgb: [255, 255, 255] },
+];
+
+function parseHexColor(hex: string): [number, number, number] | null {
+	const value = hex.replace(/^#/, '').trim();
+	if (!/^[0-9a-fA-F]{6}/.test(value)) {
+		return null;
+	}
+	return [
+		Number.parseInt(value.slice(0, 2), 16),
+		Number.parseInt(value.slice(2, 4), 16),
+		Number.parseInt(value.slice(4, 6), 16),
+	];
+}
+
+function colorDistance(
+	left: [number, number, number],
+	right: [number, number, number],
+): number {
+	const redMean = (left[0] + right[0]) / 2;
+	const red = left[0] - right[0];
+	const green = left[1] - right[1];
+	const blue = left[2] - right[2];
+	return (((512 + redMean) * red * red) >> 8)
+		+ 4 * green * green
+		+ (((767 - redMean) * blue * blue) >> 8);
+}
+
+function colorLabel(hex?: string | null): string {
+	if (!hex) {
+		return 'Unknown color';
+	}
+	const rgb = parseHexColor(hex);
+	if (!rgb) {
+		return hex;
+	}
+
+	let best: ColorSwatch | null = null;
+	let bestDistance = Number.POSITIVE_INFINITY;
+	for (const swatch of COLOR_SWATCHES) {
+		const distance = colorDistance(rgb, swatch.rgb);
+		if (distance < bestDistance) {
+			best = swatch;
+			bestDistance = distance;
+		}
+	}
+
+	return best ? `${best.emoji} ${best.name}` : hex;
+}
+
 function slotLabel(slot: Slot): string {
 	const parts = [slot.label];
 	if (slot.type) {
 		parts.push(slot.type);
 	}
 	if (slot.color) {
-		parts.push(slot.color);
+		parts.push(colorLabel(slot.color));
 	}
 	return parts.join(' · ');
 }
@@ -487,7 +566,7 @@ function buildMappingEmbed(payload: MappingErrorPayload): EmbedBuilder {
 	const filaments = payload.filaments ?? [];
 	if (filaments.length > 0) {
 		const lines = filaments.map((filament, index) => {
-			const color = filament.color ? ` ${filament.color}` : '';
+			const color = filament.color ? ` ${colorLabel(filament.color)}` : '';
 			const grams = typeof filament.used_grams === 'number'
 				? ` (${filament.used_grams} g)`
 				: '';
@@ -536,7 +615,7 @@ function buildPrintEmbed(result: PrintResult): EmbedBuilder {
 	const filaments = result.filaments ?? [];
 	if (filaments.length > 0) {
 		const mapping = filaments.map((filament) => {
-			const color = filament.color ? ` ${filament.color}` : '';
+			const color = filament.color ? ` ${colorLabel(filament.color)}` : '';
 			return `${filament.index}. ${filament.type ?? 'Filament'}${color} → ${filament.slot ?? 'unknown'}`;
 		});
 		embed.addFields({
