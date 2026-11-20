@@ -407,13 +407,13 @@ function colorDistance(
 		+ (((767 - redMean) * blue * blue) >> 8);
 }
 
-function colorLabel(hex?: string | null): string {
+function nearestSwatch(hex?: string | null): ColorSwatch | null {
 	if (!hex) {
-		return 'Unknown color';
+		return null;
 	}
 	const rgb = parseHexColor(hex);
 	if (!rgb) {
-		return hex;
+		return null;
 	}
 
 	let best: ColorSwatch | null = null;
@@ -425,19 +425,35 @@ function colorLabel(hex?: string | null): string {
 			bestDistance = distance;
 		}
 	}
-
-	return best ? `${best.emoji} ${best.name}` : hex;
+	return best;
 }
 
-function slotLabel(slot: Slot): string {
-	const parts = [slot.label];
-	if (slot.type) {
-		parts.push(slot.type);
+function colorName(hex?: string | null): string {
+	const swatch = nearestSwatch(hex);
+	return swatch?.name ?? 'Unknown';
+}
+
+function ansiSwatch(hex?: string | null, width = 4): string {
+	const rgb = hex ? parseHexColor(hex) : null;
+	if (!rgb) {
+		return `\u001b[48;2;80;80;80m${' '.repeat(width)}\u001b[0m`;
 	}
-	if (slot.color) {
-		parts.push(colorLabel(slot.color));
+	return `\u001b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m${' '.repeat(width)}\u001b[0m`;
+}
+
+function ansiBlock(lines: string[], maxLength = 1024): string {
+	const prefix = '```ansi\n';
+	const suffix = '\n```';
+	const available = Math.max(0, maxLength - prefix.length - suffix.length);
+	let body = '';
+	for (const line of lines) {
+		const next = body ? `${body}\n${line}` : line;
+		if (next.length > available) {
+			break;
+		}
+		body = next;
 	}
-	return parts.join(' · ');
+	return `${prefix}${body}${suffix}`;
 }
 
 function buildStatusEmbed(status: PrinterStatus): EmbedBuilder {
@@ -510,11 +526,19 @@ function buildStatusEmbed(status: PrinterStatus): EmbedBuilder {
 				? ` (${slot.remain} g left)`
 				: '';
 			const active = slot.active ? ' ← active' : '';
-			return `${slotLabel(slot)}${remain}${active}`;
+			return `${ansiSwatch(slot.color)} ${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}${remain}${active}`;
 		});
+		let filamentValue = unitLines.join('\n');
+		if (slotLines.length > 0) {
+			const block = ansiBlock(
+				slotLines,
+				Math.max(64, 1024 - filamentValue.length - 2),
+			);
+			filamentValue = filamentValue ? `${filamentValue}\n\n${block}` : block;
+		}
 		embed.addFields({
 			name: 'Filament',
-			value: [...unitLines, '', ...slotLines].join('\n').slice(0, 1024),
+			value: filamentValue.slice(0, 1024),
 		});
 	}
 
@@ -566,24 +590,26 @@ function buildMappingEmbed(payload: MappingErrorPayload): EmbedBuilder {
 	const filaments = payload.filaments ?? [];
 	if (filaments.length > 0) {
 		const lines = filaments.map((filament, index) => {
-			const color = filament.color ? ` ${colorLabel(filament.color)}` : '';
 			const grams = typeof filament.used_grams === 'number'
 				? ` (${filament.used_grams} g)`
 				: '';
-			return `${index + 1}. ${filament.type ?? 'Filament'}${color}${grams}`;
+			return `${ansiSwatch(filament.color)} ${index + 1}. ${filament.type ?? 'Filament'} · ${colorName(filament.color)}${grams}`;
 		});
 		embed.addFields({
 			name: 'Sliced filaments',
-			value: lines.join('\n').slice(0, 1024),
+			value: ansiBlock(lines),
 		});
 	}
 
 	const slots = payload.slots ?? [];
 	if (slots.length > 0) {
-		const lines = slots.map((slot, index) => `${index + 1}. ${slotLabel(slot)}`);
+		const lines = slots.map(
+			(slot, index) =>
+				`${ansiSwatch(slot.color)} ${index + 1}. ${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}`,
+		);
 		embed.addFields({
 			name: 'Available slots',
-			value: lines.join('\n').slice(0, 1024),
+			value: ansiBlock(lines),
 		});
 	}
 
@@ -614,13 +640,13 @@ function buildPrintEmbed(result: PrintResult): EmbedBuilder {
 
 	const filaments = result.filaments ?? [];
 	if (filaments.length > 0) {
-		const mapping = filaments.map((filament) => {
-			const color = filament.color ? ` ${colorLabel(filament.color)}` : '';
-			return `${filament.index}. ${filament.type ?? 'Filament'}${color} → ${filament.slot ?? 'unknown'}`;
-		});
+		const mapping = filaments.map(
+			(filament) =>
+				`${ansiSwatch(filament.color)} ${filament.index}. ${filament.type ?? 'Filament'} · ${colorName(filament.color)} → ${filament.slot ?? 'unknown'}`,
+		);
 		embed.addFields({
 			name: 'Filament mapping',
-			value: mapping.join('\n').slice(0, 1024),
+			value: ansiBlock(mapping),
 		});
 	}
 
