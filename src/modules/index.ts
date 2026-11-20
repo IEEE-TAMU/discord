@@ -20,3 +20,4 @@ export * from './memberManagement';
 export * from './music';
 export * from './notify';
 export * from './print';
+export * from './print3d';

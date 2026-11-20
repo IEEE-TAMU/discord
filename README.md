@@ -79,3 +79,24 @@ Environment:
 - `PRINT_MAX_FILE_MB` — upload limit, default `10`
 
 If `PRINT_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can print. Replies are ephemeral because print jobs may contain sensitive documents. See `nix-cluster/README.md` for the CUPS/print-agent setup.
+
+## 3D printing
+
+The bot can drive the Bambu Lab X2D in the officer lounge through the Bambu control API on `ieee-tamu-5B`.
+
+Slash commands (guild-scoped, registered on startup):
+
+- `/3dprint <file> [plate] [filament_map] [start] [bed_leveling] [flow_cali] [vibration_cali] [timelapse]` — upload a pre-sliced `.gcode.3mf` and, by default, start it. `filament_map` is a comma-separated AMS slot for each sliced filament (for example `1` or `1,3`); leave it blank to auto-match by filament type and color. Use `ext` for the external spool.
+- `/3dprint-status` — show printer state, progress, bed/nozzle/chamber temperatures, AMS filament, errors, and a chamber camera snapshot of the bed.
+- `/3dprint-stop` — stop the current print.
+
+Environment:
+
+- `BAMBU_AGENT_URL` — base URL of the Bambu control API (required, e.g. `http://192.168.1.10:8789`)
+- `BAMBU_AGENT_TOKEN` — optional bearer token, matching the agent's `tokenFile`
+- `BAMBU_ALLOWED_ROLE_IDS` — comma-separated officer role IDs
+- `BAMBU_ALLOWED_CHANNEL_IDS` — comma-separated channel IDs where commands are allowed
+- `BAMBU_COOLDOWN_SECONDS` — per-user cooldown, default `10`
+- `BAMBU_MAX_FILE_MB` — upload limit, default `25`
+
+If `BAMBU_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can use the 3D printer. The printer must have LAN-only mode and Developer Mode enabled for `/3dprint` to start jobs; status and camera work without Developer Mode. See `nix-cluster/README.md` for the Bambu agent setup.
