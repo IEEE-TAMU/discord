@@ -1,6 +1,9 @@
-import type { Attachment } from 'discord.js';
+import type { Attachment, MessageActionRowComponentBuilder } from 'discord.js';
 import {
+	ActionRowBuilder,
 	AttachmentBuilder,
+	ButtonBuilder,
+	ButtonStyle,
 	ChatInputCommandInteraction,
 	Client,
 	EmbedBuilder,
@@ -10,7 +13,10 @@ import {
 	MessageFlags,
 	PermissionFlagsBits,
 	SlashCommandBuilder,
+	StringSelectMenuBuilder,
+	StringSelectMenuOptionBuilder,
 } from 'discord.js';
+import type { ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
 import { DiscordModule } from './index';
 
 const MODULE_NAME = 'print3d';
@@ -41,19 +47,6 @@ const commandBuilders = [
 				.setDescription('Plate number inside the .3mf (default 1)')
 				.setMinValue(1)
 				.setMaxValue(16)
-				.setRequired(false),
-		)
-		.addStringOption((option) =>
-			option
-				.setName('filament_map')
-				.setDescription('AMS slot per filament, e.g. 1 or 1,3; leave blank to auto-match')
-				.setMaxLength(64)
-				.setRequired(false),
-		)
-		.addBooleanOption((option) =>
-			option
-				.setName('start')
-				.setDescription('Start the print after uploading (default true)')
 				.setRequired(false),
 		)
 		.addBooleanOption((option) =>
@@ -169,23 +162,30 @@ type PrinterStatus = {
 	};
 };
 
+type PrintFilament = {
+	index: number;
+	id?: number | null;
+	type?: string | null;
+	color?: string | null;
+	grams?: number | null;
+	slot?: string | null;
+	globalTray?: number | null;
+};
+
 type PrintResult = {
 	ok: boolean;
 	dryRun?: boolean;
 	uploaded?: boolean;
 	started?: boolean;
+	uploadId?: string;
 	filename?: string;
 	plate?: number;
 	subtask?: string;
 	printer?: string;
-	filaments?: Array<{
-		index: number;
-		type?: string | null;
-		color?: string | null;
-		grams?: number | null;
-		slot?: string | null;
-		globalTray?: number | null;
-	}>;
+	printerState?: string;
+	capabilities?: { startPrint?: boolean };
+	filaments?: PrintFilament[];
+	slots?: Slot[];
 	warnings?: string[];
 	settings?: {
 		useAms?: boolean;
@@ -201,17 +201,32 @@ type PrintResult = {
 	state?: string;
 };
 
-type MappingErrorPayload = {
-	ok: false;
-	error: string;
+type MappingErrorDetails = {
 	needsMapping?: boolean;
+	error?: string;
 	filaments?: Array<{
-		id?: number;
+		id?: number | null;
 		type?: string | null;
 		color?: string | null;
 		used_grams?: number | null;
 	}>;
 	slots?: Slot[];
+};
+
+type MappingSession = {
+	uploadId: string;
+	userId: string;
+	filename: string;
+	plate: number;
+	subtask: string;
+	filaments: PrintFilament[];
+	slots: Slot[];
+	settings?: PrintResult['settings'];
+	capabilities?: { startPrint?: boolean };
+	printerState?: string;
+	mapping: Map<number, number>;
+	createdAt: number;
+	submitting: boolean;
 };
 
 class AgentHttpError extends Error {
@@ -245,6 +260,24 @@ let lastJobKey = '';
 let lastNotifiedJobKey: string | null = null;
 let printStartedAt: number | null = null;
 let lastActiveSlot: Slot | null = null;
+
+const MAPPING_TTL_MS = 60 * 60 * 1000;
+const MAX_MAPPING_FILAMENTS = 20;
+const mappingSessions = new Map<string, MappingSession>();
+
+function pruneMappingSessions() {
+	const cutoff = Date.now() - MAPPING_TTL_MS;
+	for (const [uploadId, session] of mappingSessions) {
+		if (session.createdAt < cutoff) {
+			mappingSessions.delete(uploadId);
+		}
+	}
+}
+
+function getMappingSession(uploadId: string): MappingSession | undefined {
+	pruneMappingSessions();
+	return mappingSessions.get(uploadId);
+}
 
 function parseIdSet(raw: string | undefined): Set<string> {
 	return new Set(
@@ -791,44 +824,147 @@ function buildStatusEmbed(status: PrinterStatus): EmbedBuilder {
 	return embed;
 }
 
-function buildMappingEmbed(payload: MappingErrorPayload): EmbedBuilder {
+function mappingComplete(session: MappingSession): boolean {
+	return session.filaments.every((_, index) => session.mapping.has(index));
+}
+
+function buildMappingSessionEmbed(
+	session: MappingSession,
+	errorMessage?: string,
+): EmbedBuilder {
+	const complete = mappingComplete(session);
 	const embed = new EmbedBuilder()
-		.setColor(0xf39c12)
-		.setTitle('Filament mapping required')
-		.setDescription(payload.error);
-
-	const filaments = payload.filaments ?? [];
-	if (filaments.length > 0) {
-		const lines = filaments.map((filament, index) => {
-			const grams = typeof filament.used_grams === 'number'
-				? ` (${filament.used_grams} g)`
-				: '';
-			return `${ansiSwatch(filament.color)} ${index + 1}. ${filament.type ?? 'Filament'} · ${colorName(filament.color)}${grams}`;
-		});
-		embed.addFields({
-			name: 'Sliced filaments',
-			value: ansiBlock(lines),
-		});
-	}
-
-	const slots = payload.slots ?? [];
-	if (slots.length > 0) {
-		const lines = slots.map(
-			(slot, index) =>
-				`${ansiSwatch(slot.color)} ${index + 1}. ${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}`,
+		.setColor(errorMessage ? 0xe74c3c : complete ? 0x2ecc71 : 0x3498db)
+		.setTitle(`Map filament for ${session.subtask}`)
+		.setDescription(
+			`Uploaded **${session.filename}** (plate ${session.plate}). Choose a filament for every sliced material, then start the print.`,
 		);
-		embed.addFields({
-			name: 'Available slots',
-			value: ansiBlock(lines),
-		});
-	}
 
+	const filamentLines = session.filaments.map((filament, index) => {
+		const grams = typeof filament.grams === 'number' ? ` (${filament.grams} g)` : '';
+		return `${ansiSwatch(filament.color)} ${index + 1}. ${filament.type ?? 'Filament'} · ${colorName(filament.color)}${grams}`;
+	});
+	embed.addFields({ name: 'Sliced filaments', value: ansiBlock(filamentLines) });
+
+	const slotLines = session.slots.map((slot) => {
+		const remain = typeof slot.remain === 'number' && slot.remain >= 0
+			? ` · ${slot.remain} g left`
+			: '';
+		return `${ansiSwatch(slot.color)} ${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}${remain}`;
+	});
 	embed.addFields({
-		name: 'How to continue',
-		value: 'Rerun `/3dprint` with `filament_map` set to the slot number for each sliced filament, for example `1` or `1,3`. Use `ext` for the external spool.',
+		name: 'Available filaments',
+		value: slotLines.length > 0
+			? ansiBlock(slotLines)
+			: 'No AMS slots or external spool are reporting filament.',
 	});
 
+	const mappingLines = session.filaments.map((filament, index) => {
+		const tray = session.mapping.get(index);
+		const slot = tray === undefined
+			? undefined
+			: session.slots.find((candidate) => candidate.globalId === tray);
+		return `${index + 1}. ${filament.type ?? 'Filament'} · ${colorName(filament.color)} → ${
+			slot ? `${slot.label} · ${colorName(slot.color)}` : 'not selected'
+		}`;
+	});
+	embed.addFields({ name: 'Mapping', value: mappingLines.join('\n').slice(0, 1024) });
+
+	if (session.settings) {
+		const settings = session.settings;
+		embed.addFields({
+			name: 'Options',
+			value: [
+				`Bed leveling: ${settings.bedLeveling ? 'yes' : 'no'}`,
+				`Flow calibration: ${settings.flowCali ? 'yes' : 'no'}`,
+				`Vibration calibration: ${settings.vibrationCali ? 'yes' : 'no'}`,
+				`AI layer inspection: ${settings.layerInspect ? 'yes' : 'no'}`,
+				`Timelapse: ${settings.timelapse ? 'yes' : 'no'}`,
+			].join('\n'),
+		});
+	}
+
+	if (session.capabilities?.startPrint === false) {
+		embed.addFields({
+			name: 'Printing disabled',
+			value: 'Developer Mode is off on the printer. Enable **Settings → LAN Only → Developer Mode** before starting.',
+		});
+	}
+	if (
+		session.printerState === 'PREPARE'
+		|| session.printerState === 'RUNNING'
+		|| session.printerState === 'PAUSE'
+		|| session.printerState === 'SLICING'
+	) {
+		embed.addFields({
+			name: 'Printer busy',
+			value: `The printer is currently **${session.printerState}**. You can map now and start after it is free.`,
+		});
+	}
+	if (errorMessage) {
+		embed.addFields({ name: 'Could not start', value: errorMessage.slice(0, 1024) });
+	}
+
+	embed.setFooter({
+		text: 'This upload expires after 1 hour. Cancel discards the mapping; the file stays on the printer.',
+	});
 	return embed;
+}
+
+function buildMappingRows(
+	session: MappingSession,
+): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+	const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+	for (let start = 0; start < session.filaments.length; start += 5) {
+		const row = new ActionRowBuilder<MessageActionRowComponentBuilder>();
+		for (let index = start; index < Math.min(start + 5, session.filaments.length); index++) {
+			const filament = session.filaments[index];
+			const selected = session.mapping.get(index);
+			const select = new StringSelectMenuBuilder()
+				.setCustomId(`3dmap:${session.uploadId}:${index}`)
+				.setPlaceholder(
+					`Filament ${index + 1}: ${filament.type ?? 'Filament'} · ${colorName(filament.color)}`,
+				)
+				.addOptions(
+					session.slots.slice(0, 25).map((slot) => {
+						const remain = typeof slot.remain === 'number' && slot.remain >= 0
+							? ` · ${slot.remain} g left`
+							: '';
+						const option = new StringSelectMenuOptionBuilder()
+							.setLabel(
+								`${slot.label} · ${slot.type ?? 'Unknown'} · ${colorName(slot.color)}`.slice(0, 100),
+							)
+							.setValue(String(slot.globalId))
+							.setDefault(selected === slot.globalId);
+						const description = `${slot.color ?? 'No color'}${remain}`.slice(0, 100);
+						option.setDescription(description);
+						const swatch = nearestSwatch(slot.color);
+						if (swatch) {
+							option.setEmoji(swatch.emoji);
+						}
+						return option;
+					}),
+				);
+			row.addComponents(select);
+		}
+		rows.push(row);
+	}
+
+	rows.push(
+		new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
+			new ButtonBuilder()
+				.setCustomId(`3dsubmit:${session.uploadId}`)
+				.setLabel('Start print')
+				.setStyle(ButtonStyle.Success)
+				.setDisabled(!mappingComplete(session) || session.submitting),
+			new ButtonBuilder()
+				.setCustomId(`3dcancel:${session.uploadId}`)
+				.setLabel('Cancel')
+				.setStyle(ButtonStyle.Secondary)
+				.setDisabled(session.submitting),
+		),
+	);
+	return rows;
 }
 
 function buildPrintEmbed(result: PrintResult): EmbedBuilder {
@@ -925,9 +1061,15 @@ function checkCooldown(interaction: ChatInputCommandInteraction): number {
 	return 0;
 }
 
-async function runPrint(
+type CommandResult = {
+	embeds: EmbedBuilder[];
+	files?: AttachmentBuilder[];
+	components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+};
+
+async function uploadPrint(
 	interaction: ChatInputCommandInteraction,
-): Promise<{ embeds: EmbedBuilder[]; files?: AttachmentBuilder[] }> {
+): Promise<CommandResult> {
 	const attachment = interaction.options.getAttachment('file', true);
 	if (!isGcode3mf(attachment)) {
 		throw new Error('Only pre-sliced `.gcode.3mf` files are supported.');
@@ -949,57 +1091,245 @@ async function runPrint(
 		throw new Error(`That file is too large; the limit is ${formatBytes(maxFileBytes)}.`);
 	}
 
+	const plate = interaction.options.getInteger('plate') ?? 1;
 	const params = new URLSearchParams({
 		filename: attachment.name,
-		plate: String(interaction.options.getInteger('plate') ?? 1),
+		plate: String(plate),
+		start: 'false',
 	});
-	const filamentMap = interaction.options.getString('filament_map')?.trim();
-	if (filamentMap) {
-		params.set('filament_map', filamentMap);
-	}
-	const bedLeveling = interaction.options.getBoolean('bed_leveling');
-	const flowCali = interaction.options.getBoolean('flow_cali');
-	const vibrationCali = interaction.options.getBoolean('vibration_cali');
-	const timelapse = interaction.options.getBoolean('timelapse');
-	const start = interaction.options.getBoolean('start') ?? true;
-	if (bedLeveling !== null) {
-		params.set('bed_leveling', String(bedLeveling));
-	}
-	if (flowCali !== null) {
-		params.set('flow_cali', String(flowCali));
-	}
-	if (vibrationCali !== null) {
-		params.set('vibration_cali', String(vibrationCali));
-	}
-	if (timelapse !== null) {
-		params.set('timelapse', String(timelapse));
-	}
-	if (!start) {
-		params.set('start', 'false');
+	for (const option of ['bed_leveling', 'flow_cali', 'vibration_cali', 'timelapse']) {
+		const value = interaction.options.getBoolean(option);
+		if (value !== null) {
+			params.set(option, String(value));
+		}
 	}
 
+	const result = await callAgent<PrintResult>(
+		`/print?${params.toString()}`,
+		{
+			method: 'POST',
+			headers: {
+				'content-type': 'application/octet-stream',
+			},
+			body: bytes,
+		},
+		300_000,
+	);
+	if (!result.uploadId) {
+		throw new Error('The printer agent did not return an upload id.');
+	}
+	if (!result.filaments || result.filaments.length === 0) {
+		throw new Error('The sliced file does not declare any filaments.');
+	}
+	if (result.filaments.length > MAX_MAPPING_FILAMENTS) {
+		throw new Error(
+			`This file has ${result.filaments.length} filaments; the mapping UI supports up to ${MAX_MAPPING_FILAMENTS}.`,
+		);
+	}
+
+	const slots = result.slots ?? [];
+	if (slots.length === 0) {
+		return {
+			embeds: [
+				new EmbedBuilder()
+					.setColor(0xe74c3c)
+					.setTitle('No filament slots reporting')
+					.setDescription(
+						`Uploaded **${result.filename ?? attachment.name}**, but the printer is not reporting any AMS slots or external spool. Load filament and run \`/3dprint\` again.`,
+					),
+			],
+		};
+	}
+
+	const session: MappingSession = {
+		uploadId: result.uploadId,
+		userId: interaction.user.id,
+		filename: result.filename ?? attachment.name,
+		plate: result.plate ?? plate,
+		subtask: result.subtask ?? attachment.name,
+		filaments: result.filaments,
+		slots,
+		settings: result.settings,
+		capabilities: result.capabilities,
+		printerState: result.printerState,
+		mapping: new Map(),
+		createdAt: Date.now(),
+		submitting: false,
+	};
+	pruneMappingSessions();
+	mappingSessions.set(session.uploadId, session);
+
+	return {
+		embeds: [buildMappingSessionEmbed(session)],
+		components: buildMappingRows(session),
+	};
+}
+
+function mappingExpiredEmbed(): EmbedBuilder {
+	return new EmbedBuilder()
+		.setColor(0x95a5a6)
+		.setTitle('Mapping session expired')
+		.setDescription('Run `/3dprint` again to upload the file and choose a new mapping.');
+}
+
+async function handleMappingSelect(
+	interaction: StringSelectMenuInteraction,
+): Promise<void> {
+	const [, uploadId, indexRaw] = interaction.customId.split(':');
+	const session = uploadId ? getMappingSession(uploadId) : undefined;
+	if (!session) {
+		await interaction.update({ embeds: [mappingExpiredEmbed()], components: [] });
+		return;
+	}
+	if (session.userId !== interaction.user.id) {
+		await interaction.reply({
+			content: 'Only the person who uploaded this file can map it.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	const index = Number(indexRaw);
+	if (!Number.isInteger(index) || index < 0 || index >= session.filaments.length) {
+		await interaction.reply({
+			content: 'That filament is no longer part of this upload.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	const value = Number(interaction.values[0]);
+	const slot = session.slots.find((candidate) => candidate.globalId === value);
+	if (!slot) {
+		await interaction.reply({
+			content: 'That filament slot is no longer available. Rerun `/3dprint` to refresh.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	session.mapping.set(index, value);
+	await interaction.update({
+		embeds: [buildMappingSessionEmbed(session)],
+		components: buildMappingRows(session),
+	});
+}
+
+async function handleMappingSubmit(interaction: ButtonInteraction): Promise<void> {
+	const uploadId = interaction.customId.split(':')[1];
+	const session = uploadId ? getMappingSession(uploadId) : undefined;
+	if (!session) {
+		await interaction.update({ embeds: [mappingExpiredEmbed()], components: [] });
+		return;
+	}
+	if (session.userId !== interaction.user.id) {
+		await interaction.reply({
+			content: 'Only the person who uploaded this file can start it.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+	if (!mappingComplete(session)) {
+		await interaction.reply({
+			content: 'Choose a filament for every sliced material first.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+	if (session.submitting) {
+		await interaction.reply({
+			content: 'This print is already being submitted.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+
+	session.submitting = true;
+	await interaction.deferUpdate();
 	try {
+		const filamentMap = session.filaments.map(
+			(_, index) => session.mapping.get(index) as number,
+		);
 		const result = await callAgent<PrintResult>(
-			`/print?${params.toString()}`,
+			'/start',
 			{
 				method: 'POST',
-				headers: {
-					'content-type': 'application/octet-stream',
-				},
-				body: bytes,
+				body: JSON.stringify({
+					uploadId: session.uploadId,
+					filament_map: filamentMap,
+				}),
 			},
-			300_000,
+			180_000,
 		);
-		return { embeds: [buildPrintEmbed(result)] };
+		mappingSessions.delete(session.uploadId);
+		await interaction.editReply({
+			embeds: [buildPrintEmbed(result)],
+			components: [],
+		});
 	}
 	catch (error) {
+		session.submitting = false;
 		if (error instanceof AgentHttpError && error.payload.needsMapping) {
-			return {
-				embeds: [buildMappingEmbed(error.payload as unknown as MappingErrorPayload)],
-			};
+			const payload = error.payload as unknown as MappingErrorDetails;
+			if (Array.isArray(payload.filaments) && Array.isArray(payload.slots)) {
+				session.filaments = payload.filaments.map((filament, index) => ({
+					index: index + 1,
+					id: filament.id,
+					type: filament.type,
+					color: filament.color,
+					grams: filament.used_grams,
+				}));
+				session.slots = payload.slots;
+				session.mapping.clear();
+				await interaction.editReply({
+					embeds: [buildMappingSessionEmbed(session, error.message)],
+					components: buildMappingRows(session),
+				});
+				return;
+			}
 		}
-		throw error;
+		if (error instanceof AgentHttpError && error.status === 400) {
+			mappingSessions.delete(session.uploadId);
+			await interaction.editReply({
+				embeds: [mappingExpiredEmbed()],
+				components: [],
+			});
+			return;
+		}
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		await interaction.editReply({
+			embeds: [buildMappingSessionEmbed(session, message)],
+			components: buildMappingRows(session),
+		});
 	}
+}
+
+async function handleMappingCancel(interaction: ButtonInteraction): Promise<void> {
+	const uploadId = interaction.customId.split(':')[1];
+	const session = uploadId ? getMappingSession(uploadId) : undefined;
+	if (!session) {
+		await interaction.update({ embeds: [mappingExpiredEmbed()], components: [] });
+		return;
+	}
+	if (session.userId !== interaction.user.id) {
+		await interaction.reply({
+			content: 'Only the person who uploaded this file can cancel it.',
+			flags: MessageFlags.Ephemeral,
+		});
+		return;
+	}
+	if (uploadId) {
+		mappingSessions.delete(uploadId);
+	}
+	await interaction.update({
+		embeds: [
+			new EmbedBuilder()
+				.setColor(0x95a5a6)
+				.setTitle('Mapping cancelled')
+				.setDescription('The uploaded file stays on the printer and can still be started from the touchscreen.'),
+		],
+		components: [],
+	});
 }
 
 async function runStatus(): Promise<{
@@ -1032,13 +1362,10 @@ async function runStatus(): Promise<{
 	return { embeds: [embed], files };
 }
 
-async function runCommand(interaction: ChatInputCommandInteraction): Promise<{
-	embeds: EmbedBuilder[];
-	files?: AttachmentBuilder[];
-}> {
+async function runCommand(interaction: ChatInputCommandInteraction): Promise<CommandResult> {
 	switch (interaction.commandName) {
 	case '3dprint':
-		return runPrint(interaction);
+		return uploadPrint(interaction);
 	case '3dprint-status':
 		return runStatus();
 	case '3dprint-stop': {
@@ -1118,6 +1445,27 @@ export const print3dModule: DiscordModule = {
 		}
 
 		const onInteraction = async (interaction: Interaction) => {
+			if (
+				interaction.isStringSelectMenu()
+				&& interaction.customId.startsWith('3dmap:')
+			) {
+				await handleMappingSelect(interaction);
+				return;
+			}
+			if (
+				interaction.isButton()
+				&& interaction.customId.startsWith('3dsubmit:')
+			) {
+				await handleMappingSubmit(interaction);
+				return;
+			}
+			if (
+				interaction.isButton()
+				&& interaction.customId.startsWith('3dcancel:')
+			) {
+				await handleMappingCancel(interaction);
+				return;
+			}
 			if (!interaction.isChatInputCommand()) {
 				return;
 			}
@@ -1143,12 +1491,18 @@ export const print3dModule: DiscordModule = {
 				return;
 			}
 
-			await interaction.deferReply();
+			if (interaction.commandName === '3dprint') {
+				await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+			}
+			else {
+				await interaction.deferReply();
+			}
 			try {
 				const result = await runCommand(interaction);
 				await interaction.editReply({
 					embeds: result.embeds,
 					files: result.files,
+					components: result.components,
 				});
 			}
 			catch (error) {
@@ -1168,6 +1522,7 @@ export const print3dModule: DiscordModule = {
 			}
 			client.removeListener(Events.InteractionCreate, onInteraction);
 			lastCommandAt.clear();
+			mappingSessions.clear();
 		};
 
 		return { enabled: true };

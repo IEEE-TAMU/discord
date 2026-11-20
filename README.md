@@ -86,9 +86,11 @@ The bot can drive the Bambu Lab X2D in the officer lounge through the Bambu cont
 
 Slash commands (guild-scoped, registered on startup):
 
-- `/3dprint <file> [plate] [filament_map] [start] [bed_leveling] [flow_cali] [vibration_cali] [timelapse]` — upload a pre-sliced `.gcode.3mf` and, by default, start it. `filament_map` is a comma-separated AMS slot for each sliced filament (for example `1` or `1,3`); leave it blank to auto-match by filament type and color. Use `ext` for the external spool.
+- `/3dprint <file> [plate] [bed_leveling] [flow_cali] [vibration_cali] [timelapse]` — upload a pre-sliced `.gcode.3mf` and show the mapping UI. The reply lists the sliced materials and the live AMS/external filaments, with one select menu per sliced material. Choose a filament for every material, then press **Start print**. There is no automatic matching.
 - `/3dprint-status` — show printer state, progress, bed/nozzle/chamber temperatures, AMS filament, errors, and a chamber camera snapshot of the bed.
 - `/3dprint-stop` — stop the current print.
+
+The upload and mapping reply is ephemeral and expires after one hour. Cancelling the mapping leaves the uploaded file on the printer but does not start it. The bot uses the agent’s `POST /print?start=false` (upload + token) and `POST /start` (selected tray IDs) endpoints.
 
 Environment:
 
