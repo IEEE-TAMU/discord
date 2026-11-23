@@ -74,13 +74,13 @@ function buildEmbed(
 	staleSeconds: number,
 ): EmbedBuilder {
 	const now = Date.now();
-	const describe = (device: DeviceStatus) => {
-		const stale = now - device.lastSeen > staleSeconds * 1000;
-		const value = stale ? '⚪ Offline' : device.greenActive ? '🟢 Light on' : '🔴 Light off';
-		return { name: device.deviceId, value, inline: true };
-	};
-
 	const healthy = devices.filter((device) => now - device.lastSeen <= staleSeconds * 1000);
+	const describe = (device: DeviceStatus) => ({
+		name: device.deviceId,
+		value: device.greenActive ? '🟢 Light on' : '🔴 Light off',
+		inline: true,
+	});
+
 	const anyActive = healthy.some((device) => device.greenActive);
 	const allOffline = healthy.length === 0;
 
@@ -102,8 +102,10 @@ function buildEmbed(
 		.setColor(allOffline ? 0x95a5a6 : anyActive ? 0x2ecc71 : 0xe74c3c)
 		.setFooter({ text: FOOTER_TEXT });
 
-	if (devices.length > 1) {
-		embed.addFields(devices.map(describe));
+	// A single sensor produces a clean title/description only. Extra fields are
+	// only useful when multiple sensors are online; stale devices are ignored.
+	if (healthy.length > 1) {
+		embed.addFields(healthy.map(describe));
 	}
 
 	return embed;
