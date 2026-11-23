@@ -65,13 +65,13 @@ repository. The sketch includes it automatically:
 ```
 
 - `STATUS_URL` defaults to `ieee-tamu-5B` on the lounge LAN. Traefik on that host
-  routes `/officer-status` to the bot. `https://discord.ieeetamu.org/officer-status`
-  works too; the sketch handles both schemes.
+  routes `/officer-status` to the bot, and the route only matches requests made
+  to `192.168.1.10`, so it is not reachable through the public tunnel.
 - `API_KEY` must exactly match `OFFICER_STATUS_API_KEY` from `discord/.env`.
 - `DEVICE_ID` is shown in the Discord embed. Use a unique value per device.
 
-HTTPS uses `WiFiClientSecure` with `setInsecure()`, so traffic is encrypted but
-the certificate is not pinned. The default LAN URL is plain HTTP.
+The sketch also supports `https://` URLs, but the default LAN URL is plain HTTP
+and never leaves the local network.
 
 ## Flash and test
 
