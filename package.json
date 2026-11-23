@@ -1,6 +1,6 @@
 {
   "name": "ieee-tamu-discord-bot",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",

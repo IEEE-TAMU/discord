@@ -1,23 +1,28 @@
 /*
- * IEEE TAMU Lounge Officer Status Button
+ * IEEE TAMU Lounge Officer Presence Sensor
  *
- * ESP32 firmware for the lounge in/out button. It posts the button state to the
- * Discord bot's /officer-status endpoint, which keeps a live embed updated in a
- * Discord channel.
+ * ESP32 firmware for the lounge light sensor. It reports whether the room light
+ * is on to the Discord bot's /officer-status endpoint, which keeps a live embed
+ * updated in a Discord channel.
  *
- * Wiring:
- *   - Button: GPIO 21 to 3V3 (internal pull-down, active HIGH)
- *   - Red LED: GPIO 22 -> 220-330 ohm resistor -> LED -> GND
- *   - Green LED: GPIO 23 -> 220-330 ohm resistor -> LED -> GND
+ * Wiring (LM393 photoresistor module):
+ *   - VCC -> 3V3  (do not use 5V: DO would be 5V on the ESP32 pin)
+ *   - GND -> GND
+ *   - DO  -> GPIO 21
+ *   - Optional red LED:   GPIO 22 -> 220-330 ohm resistor -> LED -> GND
+ *   - Optional green LED: GPIO 23 -> 220-330 ohm resistor -> LED -> GND
+ *
+ * Adjust the module's potentiometer so its DO LED turns on when the room light
+ * is on. Most LM393 modules output LOW for "light detected"; if yours is
+ * inverted, set LIGHT_ACTIVE_LOW to false.
  *
  * Configuration lives in secrets.h (copy secrets.example.h and fill it in).
  * secrets.h is gitignored so Wi-Fi credentials and the API key stay local.
  *
  * Behaviour:
- *   - Press the button to toggle between AWAY (red) and ACTIVE (green).
- *   - Sends immediately on every toggle, then heartbeats every 15 seconds.
+ *   - Samples the digital light sensor and requires 1 second of stable state.
+ *   - Posts immediately when presence changes, then heartbeats every 15 seconds.
  *   - If a request fails, retries every 5 seconds without losing the state.
- *   - Boots in AWAY state so a power blip never shows a false "officer in".
  */
 
 #include "secrets.h"
@@ -30,16 +35,19 @@
 // ---------------------------------------------------------------------------
 // Pins
 // ---------------------------------------------------------------------------
-constexpr uint8_t BUTTON_PIN = 21;
+constexpr uint8_t LIGHT_SENSOR_PIN = 21;
 constexpr uint8_t RED_LED_PIN = 22;
 constexpr uint8_t GREEN_LED_PIN = 23;
+
+// Most LM393 light modules pull DO LOW when light is detected.
+constexpr bool LIGHT_ACTIVE_LOW = true;
 
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
 constexpr uint32_t WIFI_RETRY_MS = 10000;
-constexpr uint32_t DEBOUNCE_MS = 50;
+constexpr uint32_t LIGHT_STABLE_MS = 1000;
 constexpr uint32_t HEARTBEAT_MS = 15000;
 constexpr uint32_t RETRY_MS = 5000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
@@ -47,11 +55,9 @@ constexpr uint32_t HTTP_TIMEOUT_MS = 5000;
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-bool greenActive = false;
-
-bool lastRawButton = LOW;
-bool stableButton = LOW;
-uint32_t lastButtonChangeMs = 0;
+bool officerPresent = false;
+bool lastRawLight = false;
+uint32_t lastLightChangeMs = 0;
 
 bool forceSend = false;
 bool sendPending = false;
@@ -59,9 +65,14 @@ uint32_t lastHeartbeatMs = 0;
 uint32_t lastSendAttemptMs = 0;
 uint32_t lastWifiAttemptMs = 0;
 
+bool readLightOn() {
+  const bool raw = digitalRead(LIGHT_SENSOR_PIN);
+  return LIGHT_ACTIVE_LOW ? raw == LOW : raw == HIGH;
+}
+
 void applyLedState() {
-  digitalWrite(RED_LED_PIN, greenActive ? LOW : HIGH);
-  digitalWrite(GREEN_LED_PIN, greenActive ? HIGH : LOW);
+  digitalWrite(RED_LED_PIN, officerPresent ? LOW : HIGH);
+  digitalWrite(GREEN_LED_PIN, officerPresent ? HIGH : LOW);
 }
 
 void connectWiFi() {
@@ -87,33 +98,28 @@ void connectWiFi() {
   }
 }
 
-void pollButton(uint32_t now) {
-  const bool reading = digitalRead(BUTTON_PIN);
+void pollLight(uint32_t now) {
+  const bool reading = readLightOn();
 
-  // Remember when the raw input last changed, then only accept a new stable
-  // level after it has held for DEBOUNCE_MS.
-  if (reading != lastRawButton) {
-    lastRawButton = reading;
-    lastButtonChangeMs = now;
+  // Require the new light state to hold before accepting it so flicker and
+  // shadows do not spam Discord with presence changes.
+  if (reading != lastRawLight) {
+    lastRawLight = reading;
+    lastLightChangeMs = now;
   }
 
-  if (now - lastButtonChangeMs < DEBOUNCE_MS || reading == stableButton) {
+  if (now - lastLightChangeMs < LIGHT_STABLE_MS || reading == officerPresent) {
     return;
   }
 
-  stableButton = reading;
+  officerPresent = reading;
+  applyLedState();
+  forceSend = true;
 
-  // Active-high button with an internal pull-down: HIGH means pressed.
-  if (stableButton == HIGH) {
-    greenActive = !greenActive;
-    applyLedState();
-    forceSend = true;
-
-    Serial.printf("[TOGGLE] %s\n", greenActive ? "ACTIVE (green)" : "AWAY (red)");
-  }
+  Serial.printf("[LIGHT] %s\n", officerPresent ? "ON - officer present" : "OFF - lounge empty");
 }
 
-bool sendStatusUpdate(bool buttonPressed) {
+bool sendStatusUpdate() {
   if (WiFi.status() != WL_CONNECTED) {
     return false;
   }
@@ -149,12 +155,10 @@ bool sendStatusUpdate(bool buttonPressed) {
   payload.reserve(256);
   payload += F("{\"deviceId\":\"");
   payload += DEVICE_ID;
-  payload += F("\",\"buttonPressed\":");
-  payload += buttonPressed ? F("true") : F("false");
-  payload += F(",\"greenActive\":");
-  payload += greenActive ? F("true") : F("false");
+  payload += F("\",\"greenActive\":");
+  payload += officerPresent ? F("true") : F("false");
   payload += F(",\"status\":\"");
-  payload += greenActive ? F("ACTIVE") : F("AWAY");
+  payload += officerPresent ? F("PRESENT") : F("EMPTY");
   payload += F("\",\"uptimeSec\":");
   payload += String(millis() / 1000UL);
   payload += F(",\"rssi\":");
@@ -178,22 +182,24 @@ bool sendStatusUpdate(bool buttonPressed) {
 void setup() {
   Serial.begin(115200);
   delay(200);
-  Serial.println("\nIEEE TAMU lounge officer button");
+  Serial.println("\nIEEE TAMU lounge light sensor");
 
-  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
+  pinMode(LIGHT_SENSOR_PIN, INPUT);
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
 
-  stableButton = digitalRead(BUTTON_PIN);
-  lastRawButton = stableButton;
+  officerPresent = readLightOn();
+  lastRawLight = officerPresent;
+  lastLightChangeMs = millis();
   applyLedState();
+  Serial.printf("[LIGHT] boot state: %s\n", officerPresent ? "ON" : "OFF");
 
   connectWiFi();
   lastWifiAttemptMs = millis();
 
   const uint32_t now = millis();
   lastSendAttemptMs = now;
-  if (sendStatusUpdate(stableButton == HIGH)) {
+  if (sendStatusUpdate()) {
     lastHeartbeatMs = now;
     sendPending = false;
   } else {
@@ -209,7 +215,7 @@ void loop() {
     connectWiFi();
   }
 
-  pollButton(now);
+  pollLight(now);
 
   if (WiFi.status() == WL_CONNECTED) {
     const bool heartbeatDue = now - lastHeartbeatMs >= HEARTBEAT_MS;
@@ -219,7 +225,7 @@ void loop() {
       lastSendAttemptMs = now;
       forceSend = false;
 
-      if (sendStatusUpdate(stableButton == HIGH)) {
+      if (sendStatusUpdate()) {
         lastHeartbeatMs = now;
         sendPending = false;
       } else {

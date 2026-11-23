@@ -18,5 +18,5 @@ constexpr char STATUS_URL[] = "http://192.168.1.10/officer-status";
 // Must match OFFICER_STATUS_API_KEY in the bot's .env. Leave empty only if the
 // bot has no key configured.
 constexpr char API_KEY[] = "";
-// Unique per device; shown as the field name in the Discord embed.
-constexpr char DEVICE_ID[] = "esp32-lounge-button-1";
+// Unique per device; used in API responses and when multiple sensors report.
+constexpr char DEVICE_ID[] = "esp32-lounge-light-1";

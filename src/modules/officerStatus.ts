@@ -14,14 +14,11 @@ const FOOTER_TEXT = 'ieee-tamu officer status';
 const DEFAULT_STALE_SECONDS = 90;
 const STALE_CHECK_INTERVAL_MS = 30000;
 const MAX_DEVICE_ID_LENGTH = 64;
-const MAX_STATUS_LENGTH = 32;
 const MESSAGE_SEARCH_LIMIT = 50;
 
 type DeviceStatus = {
 	deviceId: string;
-	buttonPressed: boolean;
 	greenActive: boolean;
-	status: string;
 	uptimeSec: number;
 	rssi: number;
 	lastSeen: number;
@@ -29,9 +26,7 @@ type DeviceStatus = {
 
 type OfficerStatusPayload = {
 	deviceId?: unknown;
-	buttonPressed?: unknown;
 	greenActive?: unknown;
-	status?: unknown;
 	uptimeSec?: unknown;
 	rssi?: unknown;
 };
@@ -65,33 +60,13 @@ function parsePayload(body: OfficerStatusPayload): DeviceStatus | string {
 		return `deviceId must be at most ${MAX_DEVICE_ID_LENGTH} characters`;
 	}
 
-	if (body.status !== undefined && typeof body.status !== 'string') {
-		return 'status must be a string';
-	}
-
 	return {
 		deviceId: body.deviceId.trim(),
-		buttonPressed: body.buttonPressed === true,
 		greenActive: body.greenActive === true,
-		status: (body.status ?? '').slice(0, MAX_STATUS_LENGTH),
 		uptimeSec: Math.max(0, toFiniteNumber(body.uptimeSec, 0)),
 		rssi: toFiniteNumber(body.rssi, 0),
 		lastSeen: Date.now(),
 	};
-}
-
-function formatDuration(totalSeconds: number): string {
-	const seconds = Math.floor(totalSeconds);
-	const days = Math.floor(seconds / 86400);
-	const hours = Math.floor((seconds % 86400) / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const parts: string[] = [];
-
-	if (days > 0) parts.push(`${days}d`);
-	if (days > 0 || hours > 0) parts.push(`${hours}h`);
-	parts.push(`${minutes}m`);
-
-	return parts.join(' ');
 }
 
 function buildEmbed(
@@ -101,22 +76,8 @@ function buildEmbed(
 	const now = Date.now();
 	const describe = (device: DeviceStatus) => {
 		const stale = now - device.lastSeen > staleSeconds * 1000;
-		const active = device.greenActive && !stale;
-		const label = stale
-			? '⚪ OFFLINE — no recent update'
-			: active
-				? '🟢 ACTIVE — officer in the lounge'
-				: '🔴 AWAY — lounge is empty';
-
-		const lines = [
-			`**Status:** ${label}`,
-			`**Button:** ${device.buttonPressed ? 'pressed' : 'released'}`,
-			`**Wi-Fi RSSI:** ${device.rssi} dBm`,
-			`**Device uptime:** ${formatDuration(device.uptimeSec)}`,
-			`**Last update:** <t:${Math.floor(device.lastSeen / 1000)}:R>`,
-		];
-
-		return { name: device.deviceId, value: lines.join('\n'), inline: false };
+		const value = stale ? '⚪ Offline' : device.greenActive ? '🟢 Light on' : '🔴 Light off';
+		return { name: device.deviceId, value, inline: true };
 	};
 
 	const healthy = devices.filter((device) => now - device.lastSeen <= staleSeconds * 1000);
@@ -124,24 +85,28 @@ function buildEmbed(
 	const allOffline = healthy.length === 0;
 
 	const title = allOffline
-		? '⚪ Officer status — device offline'
+		? '⚪ Lounge sensor offline'
 		: anyActive
-			? '🟢 Officer in the lounge'
-			: '🔴 Lounge is empty';
+			? '🟢 Officer present'
+			: '🔴 Lounge empty';
 
 	const description = allOffline
-		? `No status update received in the last ${staleSeconds} seconds.`
+		? `No update from the lounge sensor in the last ${staleSeconds} seconds.`
 		: anyActive
-			? 'The lounge button reports an officer is available.'
-			: 'The lounge button reports the lounge is currently unoccupied.';
+			? 'The lounge light is on.'
+			: 'The lounge light is off.';
 
-	return new EmbedBuilder()
+	const embed = new EmbedBuilder()
 		.setTitle(title)
 		.setDescription(description)
 		.setColor(allOffline ? 0x95a5a6 : anyActive ? 0x2ecc71 : 0xe74c3c)
-		.setFields(devices.map(describe))
-		.setFooter({ text: FOOTER_TEXT })
-		.setTimestamp(new Date());
+		.setFooter({ text: FOOTER_TEXT });
+
+	if (devices.length > 1) {
+		embed.addFields(devices.map(describe));
+	}
+
+	return embed;
 }
 
 function isSendableTextChannel(channel: unknown): channel is SendableChannels & TextBasedChannel {
@@ -268,7 +233,7 @@ export const officerStatusModule: DiscordModule = {
 
 			devices.set(parsed.deviceId, parsed);
 			console.log(
-				`${MODULE_NAME}: ${parsed.deviceId} -> ${parsed.greenActive ? 'ACTIVE' : 'AWAY'}`,
+				`${MODULE_NAME}: ${parsed.deviceId} -> ${parsed.greenActive ? 'PRESENT' : 'EMPTY'}`,
 			);
 
 			void renderStatus();
@@ -276,7 +241,7 @@ export const officerStatusModule: DiscordModule = {
 			return res.json({
 				success: true,
 				deviceId: parsed.deviceId,
-				status: parsed.greenActive ? 'ACTIVE' : 'AWAY',
+				status: parsed.greenActive ? 'PRESENT' : 'EMPTY',
 				updatedAt: new Date(parsed.lastSeen).toISOString(),
 			});
 		});
