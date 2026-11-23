@@ -179,6 +179,53 @@ curl -X POST http://localhost:3000/notify \
   -d '{"source": "portal-alerts", "content": "Event still open after 8h"}'
 ```
 
+## Officer status button (POST)
+
+```
+POST /officer-status
+```
+
+Accepts a heartbeat/status update from the ESP32 officer lounge button and
+updates a single embed in `OFFICER_STATUS_CHANNEL_ID`. When
+`OFFICER_STATUS_API_KEY` is set, the request must include
+`Authorization: Bearer <key>`.
+
+**Request Body:**
+
+- `deviceId` (required): stable device identifier, max 64 characters.
+- `buttonPressed` (optional): boolean.
+- `greenActive` (optional): boolean. `true` means an officer is in the lounge.
+- `status` (optional): device-supplied label, max 32 characters.
+- `uptimeSec` (optional): device uptime in seconds.
+- `rssi` (optional): Wi-Fi signal strength in dBm.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "deviceId": "esp32-lounge-button-1",
+  "status": "ACTIVE",
+  "updatedAt": "2026-11-23T12:00:00.000Z"
+}
+```
+
+### Get officer status (GET)
+
+```
+GET /officer-status
+```
+
+Returns the last known state of every device, including a `stale` flag when the
+device has not posted within `OFFICER_STATUS_STALE_SECONDS`.
+
+```bash
+curl -X POST http://localhost:3000/officer-status \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer change-me-shared-secret" \
+  -d '{"deviceId":"esp32-lounge-button-1","buttonPressed":true,"greenActive":true,"status":"ACTIVE","uptimeSec":42,"rssi":-55}'
+```
+
 ## Printer control API
 
 Printing is exposed through Discord slash commands (`/print`, `/print-status`, `/print-cancel`). The bot talks to a separate print-agent HTTP API on the print host; it is not part of the bot's own port-3000 API. See `nix-cluster/README.md` for the agent endpoints and configuration.

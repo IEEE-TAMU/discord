@@ -139,3 +139,6 @@ dist
 .DS_Store
 
 .direnv/
+
+# Arduino firmware secrets (Wi-Fi password, API key)
+firmware/**/secrets.h

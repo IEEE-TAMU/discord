@@ -19,5 +19,6 @@ export * from './health';
 export * from './memberManagement';
 export * from './music';
 export * from './notify';
+export * from './officerStatus';
 export * from './print';
 export * from './print3d';

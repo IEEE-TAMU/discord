@@ -59,6 +59,30 @@ If `MUSIC_ALLOWED_ROLE_IDS` is empty, only members with **Manage Server** can co
 
 The player outputs at 100%; loudness is controlled by the physical knob on the speakers. Spotify links are rejected for now — see `nix-cluster/README.md` for the player setup.
 
+## Lounge officer status button
+
+An ESP32 with a two-colour button in the officer lounge can report whether an
+officer is in or out. The bot exposes an HTTP endpoint for the device and keeps a
+single embed in a channel updated in place.
+
+- `POST /officer-status` — the device sends a JSON status update
+- `GET /officer-status` — inspect the last known state of every device
+
+Environment:
+
+- `OFFICER_STATUS_CHANNEL_ID` — channel that holds the live status embed (required)
+- `OFFICER_STATUS_API_KEY` — shared secret the device sends as `Authorization: Bearer <key>`. If empty, unauthenticated posts are allowed
+- `OFFICER_STATUS_STALE_SECONDS` — mark a device offline after this many seconds without an update, default `90`
+
+The embed turns green when any device reports `greenActive: true` and red when
+every device reports away. A device that stops sending heartbeats is shown as
+offline. The message is recreated automatically if it was deleted, so the device
+does not need to know the message ID.
+
+Firmware for the ESP32 button is in
+[`firmware/lounge-officer-button`](firmware/lounge-officer-button). It includes
+wiring, flashing, and configuration instructions.
+
 ## Printing
 
 The bot can print to the Brother MFC-7360N in the officer lounge through the print host on `ieee-tamu-5B`.
